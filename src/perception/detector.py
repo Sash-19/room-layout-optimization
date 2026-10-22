@@ -139,17 +139,19 @@ class Detector:
     def detect(self, image: str | Path | Image.Image | np.ndarray) -> list[Detection]:
         if not isinstance(image, _IMAGE_TYPES):
             raise TypeError(f"unsupported image type: {type(image)!r}")
-        result = self.model.predict(
-            source=image,
-            conf=self.conf,
-            iou=self.iou,
-            imgsz=self.imgsz,
-            device=self.device,
-            max_det=self.max_det,
-            half=self.half,
-            verbose=self.verbose,
-            stream=False,
-        )[0]
+        predict_args = {
+            "source": image,
+            "conf": self.conf,
+            "iou": self.iou,
+            "imgsz": self.imgsz,
+            "device": self.device,
+            "max_det": self.max_det,
+            "verbose": self.verbose,
+            "stream": False,
+        }
+        if self.half:
+            predict_args["half"] = True
+        result = self.model.predict(**predict_args)[0]
         detections = detections_from_result(result, class_map=self.class_map, drop_unknown=self.drop_unknown)
         if self.classes is not None:
             detections = [detection for detection in detections if detection.cls_name in self.classes]
