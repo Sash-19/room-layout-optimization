@@ -22,6 +22,8 @@ Everything downstream has a stable data contract (`src/schemas.py`,
 `src/floorplan/representation.py`) so models and components can be swapped without touching
 later stages.
 
+The midterm report draft is in [`docs/midterm_report.md`](docs/midterm_report.md).
+
 ## What the perception stage produces
 
 Given an RGB image, the pipeline outputs:
