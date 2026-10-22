@@ -1,0 +1,46 @@
+data:
+  output: data/processed
+  seed: 0
+  split_ratios:
+    train: 0.70
+    val: 0.15
+    test: 0.15
+  keep_source_splits: false
+  copy_mode: copy
+  verify_images: false
+  sources: []
+
+model:
+  weights: yolov8s.pt
+  conf: 0.25
+  iou: 0.7
+  imgsz: 640
+  device: null
+  max_det: 300
+  half: false
+  drop_unknown: true
+  classes: []
+  class_map: {}
+
+train:
+  epochs: 100
+  batch: 16
+  imgsz: 640
+  patience: 20
+  optimizer: auto
+  lr0: 0.01
+  cos_lr: true
+  close_mosaic: 10
+  seed: 0
+  project: runs/detect
+  name: train
+  exist_ok: false
+  plots: true
+
+eval:
+  split: test
+  conf: 0.001
+  report_conf: 0.25
+  limit: null
+  iou_thresholds: [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]
+  out: results/detection_eval

@@ -1,1 +1,192 @@
-# room-layout-optimization
+# Room Layout Optimization Using Computer Vision
+
+Takes a single room photograph, detects the furniture and architectural elements, lifts them
+into a metric 2D floor plan, and searches for better furniture arrangements with an explicit
+constraint-based scoring function.
+
+The full plan lives in [`../project plan.md`](../project%20plan.md).
+
+## Status
+
+| Stage | Module | State |
+|-------|--------|-------|
+| 1. Perception (detection, segmentation, depth) | `src/perception/` | implemented |
+| 2. Geometry lifting (camera, floor plane, scale) | `src/geometry/` | not started |
+| 3. Floor plan representation | `src/floorplan/` | not started |
+| 4. Scoring + layout optimization | `src/scoring/`, `src/optimization/` | not started |
+| 5. Visualization / end-to-end pipeline | `src/viz/`, `src/pipeline.py` | not started |
+
+This repository currently implements **Stage 1: Perception** and the dataset tooling that
+feeds it. Everything downstream has a stable data contract (`src/schemas.py`) so perception
+models can be swapped without touching later stages.
+
+## What the perception stage produces
+
+Given an RGB image, the pipeline outputs:
+
+- **Detections** in a unified taxonomy (`bed, desk, chair, couch, table, cabinet, door, window`)
+  as `Detection(cls, conf, bbox_xyxy, mask?)`.
+- A **monocular depth map** (`DepthMap`), metric or normalized-relative.
+- **Floor / wall masks** (`StructureMasks`) for the geometry stage.
+
+## Install
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate            # Windows
+pip install -r requirements.txt
+```
+
+or with conda:
+
+```bash
+conda env create -f environment.yml
+conda activate roomlayout
+```
+
+A GPU is recommended for fine-tuning but not required for inference of the small models.
+The training/eval scripts are pure Python and unit-tested without torch installed.
+
+## Unified class taxonomy
+
+```
+movable:  bed, desk, chair, couch, table, cabinet (incl. wardrobe, bookcase, dresser, nightstand)
+fixed:    door, window
+```
+
+Source names are mapped to these classes with alias rules in `src/perception/taxonomy.py`
+(e.g. `sofa -> couch`, `windowpane -> window`, `dining table -> table`). Source-specific
+overrides go in a `class_map` in the config.
+
+## 1. Prepare the dataset
+
+Merge COCO / Open Images / Roboflow sources into one YOLO-format dataset with the unified
+taxonomy and a 70/15/15 split. Fill in `data.sources` in `configs/detection.yaml`:
+
+```yaml
+data:
+  output: data/processed
+  split_ratios: {train: 0.70, val: 0.15, test: 0.15}
+  sources:
+    - name: coco_rooms
+      type: coco
+      images: data/raw/coco/train2017
+      annotations: data/raw/coco/annotations/instances_train2017.json
+      class_map:
+        bed: bed
+        chair: chair
+        couch: couch
+        dining table: table
+    - name: openimages_rooms
+      type: yolo
+      root: data/raw/openimages/yolo
+      names: [Sofa, Cupboard, Wardrobe, Door, Window]
+      class_map:
+        Sofa: couch
+        Cupboard: cabinet
+        Wardrobe: cabinet
+        Door: door
+        Window: window
+      split: train
+```
+
+Then:
+
+```bash
+python scripts/prepare_dataset.py --config configs/detection.yaml
+```
+
+Output (`data/processed/`): `images/{train,val,test}`, `labels/{train,val,test}`, `data.yaml`,
+`manifest.json`. Unmapped classes are dropped; add a `null` value in `class_map` to
+explicitly drop a class. Use `--keep-splits` to preserve a source's own split, `--copy-mode link`
+to hardlink instead of copy, and `--verify-images` to skip corrupt images.
+
+## 2. Train the detector
+
+```bash
+python scripts/train_detector.py --config configs/detection.yaml
+```
+
+Starts from `model.weights` (default `yolov8s.pt`), fine-tunes with the settings under `train:`,
+and writes weights to `runs/detect/train/weights/best.pt`. All `train:` keys are passed straight
+to Ultralytics, so any YOLO argument can be added. Override on the CLI with `--weights`,
+`--epochs`, `--batch`, `--imgsz`, `--device`, `--project`, `--name`.
+
+## 3. Evaluate the detector
+
+Measurements use a custom evaluator so **zero-shot COCO weights** and **fine-tuned unified
+weights** can be compared apples-to-apples: predictions are remapped to the unified taxonomy
+and matched against the unified ground truth.
+
+```bash
+# fine-tuned model
+python scripts/evaluate_detector.py --config configs/detection.yaml \
+    --weights runs/detect/train/weights/best.pt --split test
+
+# zero-shot baseline (E1)
+python scripts/evaluate_detector.py --config configs/detection.yaml \
+    --weights yolov8s.pt --split test --name zeroshot
+```
+
+Reports mAP@0.5, mAP@0.5:0.95, precision, recall, F1 and per-class AP@0.5, in the console,
+as JSON and as a Markdown table under `results/detection_eval/`.
+
+## 4. Run the perception demo
+
+```bash
+python scripts/run_perception.py --config configs/perception.yaml \
+    --image data/samples/bedroom1.jpg
+
+# detection only (no depth/segmentation models)
+python scripts/run_perception.py --image data/samples/bedroom1.jpg --no-depth --no-structure
+
+# use a trained detector
+python scripts/run_perception.py --image data/samples/bedroom1.jpg \
+    --weights runs/detect/train/weights/best.pt
+```
+
+Writes per image to `results/perception/<name>/`:
+
+```
+input.jpg            detections.jpg        detections.json
+depth.png            depth.npy             floor_mask.png
+wall_mask.png        structures.jpg        result.json
+```
+
+`configs/perception.yaml` controls the detector, depth model (`depth-anything/Depth-Anything-V2-Small-hf`
+by default, relative depth) and floor/wall segmenter (`segformer-b0` ADE20K). Set `metric: true`
+and a metric depth checkpoint to get depth in meters.
+
+## Tests
+
+```bash
+python -m pytest -q
+```
+
+Covers schemas, taxonomy/aliasing, YOLO result post-processing, depth/structure post-processing,
+dataset merging/splitting, detection evaluation (matching + AP), the perception pipeline, and
+visualization. The suite runs without torch/ultralytics installed.
+
+## Module map
+
+```
+src/
+├── schemas.py                 Detection, DepthMap, StructureMasks
+├── utils.py                   YAML/JSON/image/device helpers
+├── dataset.py                 COCO/YOLO -> unified YOLO dataset
+└── perception/
+    ├── taxonomy.py            unified classes + aliases
+    ├── detector.py            Ultralytics YOLO wrapper (train/infer)
+    ├── evaluation.py          unified-class mAP / P / R / F1
+    ├── depth.py               monocular depth (Depth Anything V2)
+    ├── structure.py           floor/wall segmentation (SegFormer ADE20K)
+    ├── pipeline.py            detection + depth + structure
+    └── visualize.py           boxes, masks, depth colormaps
+```
+
+## Roadmap
+
+Next stage is **geometry lifting** (`src/geometry/`): camera intrinsics from EXIF/FOV,
+RANSAC floor-plane fit on back-projected depth, metric scale, projecting the bottom edge of
+each detection onto the floor plane, and room-boundary estimation. The detector/evaluator here
+already emit the contracts that stage consumes.
