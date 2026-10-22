@@ -133,6 +133,18 @@ python scripts/evaluate_detector.py --config configs/detection.yaml \
 Reports mAP@0.5, mAP@0.5:0.95, precision, recall, F1 and per-class AP@0.5, in the console,
 as JSON and as a Markdown table under `results/detection_eval/`.
 
+Run both baselines in one table (E1):
+
+```bash
+python scripts/run_e1_detector.py --config configs/detection.yaml \
+    --data data/processed --split test \
+    --weights yolov8s.pt runs/detect/train/weights/best.pt \
+    --labels zero_shot fine_tuned
+```
+
+Writes per-model metrics plus `e1_detector.json` / `e1_detector.md` under
+`results/experiments/e1_detector/`.
+
 ## 4. Run the perception demo
 
 ```bash
