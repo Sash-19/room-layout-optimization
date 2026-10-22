@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -44,6 +45,16 @@ class Opening:
             "swing_radius": round(self.swing_radius, 4),
         }
 
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Opening:
+        return cls(
+            kind=str(payload["kind"]),
+            wall_index=int(payload["wall_index"]),
+            offset=float(payload["offset"]),
+            width=float(payload["width"]),
+            swing_radius=float(payload.get("swing_radius", 0.0)),
+        )
+
 
 @dataclass(slots=True)
 class Furniture:
@@ -86,13 +97,28 @@ class Furniture:
             "d": round(self.d, 4),
             "x": round(self.x, 4),
             "y": round(self.y, 4),
-            "theta_deg": round(self.theta * 180.0 / 3.141592653589793, 2),
+            "theta_deg": round(self.theta * 180.0 / math.pi, 2),
             "front_clearance": round(self.front_clearance, 4),
             "wall_affinity": self.wall_affinity,
             "confidence": round(self.confidence, 4),
             "locked": self.locked,
             "footprint": [[round(x, 4), round(y, 4)] for x, y in self.footprint.exterior.coords],
         }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Furniture:
+        return cls(
+            cls=str(payload.get("class", payload.get("cls"))),
+            w=float(payload["w"]),
+            d=float(payload["d"]),
+            x=float(payload["x"]),
+            y=float(payload["y"]),
+            theta=math.radians(float(payload.get("theta_deg", 0.0))),
+            front_clearance=float(payload.get("front_clearance", 0.0)),
+            wall_affinity=bool(payload.get("wall_affinity", False)),
+            confidence=float(payload.get("confidence", 1.0)),
+            locked=bool(payload.get("locked", False)),
+        )
 
 
 @dataclass(slots=True)
@@ -136,6 +162,22 @@ class Room:
             "furniture": [item.to_dict() for item in self.furniture],
         }
 
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Room:
+        return cls(
+            polygon=Polygon(payload["polygon"]),
+            openings=[Opening.from_dict(item) for item in payload.get("openings", [])],
+            furniture=[Furniture.from_dict(item) for item in payload.get("furniture", [])],
+        )
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Room:
+        return cls(
+            polygon=Polygon(payload["polygon"]),
+            openings=[Opening.from_dict(item) for item in payload.get("openings", [])],
+            furniture=[Furniture.from_dict(item) for item in payload.get("furniture", [])],
+        )
+
 
 @dataclass(slots=True)
 class FloorPlan:
@@ -155,3 +197,14 @@ class FloorPlan:
             "camera": self.camera,
             "metadata": self.metadata,
         }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> FloorPlan:
+        return cls(
+            room=Room.from_dict(payload["room"]),
+            scale=float(payload.get("scale", 1.0)),
+            scale_mode=str(payload.get("scale_mode", "unscaled")),
+            camera_height=float(payload.get("camera_height", 0.0)),
+            camera=payload.get("camera"),
+            metadata=payload.get("metadata", {}),
+        )

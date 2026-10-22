@@ -46,6 +46,12 @@ def test_floorplan_json_serializable():
     assert decoded["scale"] == 1.25
     assert decoded["room"]["openings"][0]["kind"] == "door"
 
+    restored = FloorPlan.from_dict(decoded)
+    assert restored.room.area == pytest.approx(12.0)
+    assert restored.room.openings[0].wall_name == "min_y"
+    assert restored.room.furniture[0].footprint.equals(plan.room.furniture[0].footprint)
+    assert restored.metadata["warnings"] == []
+
 
 def test_room_rejects_invalid_polygon():
     with pytest.raises(ValueError):

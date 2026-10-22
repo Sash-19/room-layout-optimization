@@ -13,13 +13,14 @@ The full plan lives in [`../project plan.md`](../project%20plan.md).
 | 1. Perception (detection, segmentation, depth) | `src/perception/` | implemented |
 | 2. Geometry lifting (camera, floor plane, scale) | `src/geometry/` | implemented |
 | 3. Floor plan representation | `src/floorplan/` | implemented |
-| 4. Scoring + layout optimization | `src/scoring/`, `src/optimization/` | not started |
+| 4. Scoring + layout optimization | `src/scoring/`, `src/optimization/` | scoring implemented; optimizer not started |
 | 5. Visualization / end-to-end pipeline | `src/viz/`, `src/pipeline.py` | not started |
 
-This repository currently implements **Stages 1–3**: perception, geometry lifting, and the
-floor-plan representation/priors that the optimizer will consume. Everything downstream has a
-stable data contract (`src/schemas.py`, `src/floorplan/representation.py`) so models and
-components can be swapped without touching later stages.
+This repository currently implements **Stages 1–3 plus the scoring half of Stage 4**: perception,
+geometry lifting, the floor-plan representation/priors, and a constraint-based layout scorer.
+Everything downstream has a stable data contract (`src/schemas.py`,
+`src/floorplan/representation.py`) so models and components can be swapped without touching
+later stages.
 
 ## What the perception stage produces
 
@@ -197,6 +198,25 @@ coordinates), openings, scale mode/scale factor, camera height, and fit diagnost
 Relative depth is scale-free by nature, so pass `--room-width`/`--room-depth` (or a reference
 width) for metric output.
 
+## 6. Score a floor plan
+
+```bash
+python scripts/score_floorplan.py \
+    --floorplan results/geometry/bedroom1/floorplan.json \
+    --config configs/scoring.yaml
+```
+
+Writes `score.json` next to the floor plan with:
+
+- total weighted score in `[0, 1]` and per-term breakdown;
+- hard-constraint violations (outside room, footprint overlap, blocked door, blocked window);
+- layout metrics: room/free/walking area, usable-floor fraction, overlap pairs/area, door
+  clearance, largest free component.
+
+Scoring uses a 5 cm occupancy grid (`src/scoring/grid.py`) with A* path lengths and distance
+transforms. Soft terms are `overlap`, `walk`, `path`, `wall`, `door`, `window`, `util`,
+`clear`, and optional `pair`; weights and thresholds live in `configs/scoring.yaml`.
+
 ## Tests
 
 ```bash
@@ -205,9 +225,10 @@ python -m pytest -q
 
 Covers schemas, taxonomy/aliasing, YOLO result post-processing, depth/structure post-processing,
 dataset merging/splitting, detection evaluation (matching + AP), perception/geometry pipelines,
-camera/floor-plane/scale estimation, lifting, the floor-plan representation/priors, and
-visualization. The suite runs without torch/ultralytics installed; geometry tests need
-`shapely` and `matplotlib` from `requirements.txt`.
+camera/floor-plane/scale estimation, lifting, the floor-plan representation/priors,
+occupancy-grid constraints/scoring terms, and visualization. The suite runs without
+torch/ultralytics installed; geometry/scoring tests need `shapely`, `scipy`, and `matplotlib`
+from `requirements.txt`.
 
 ## Module map
 
@@ -232,15 +253,20 @@ src/
 │   ├── scale.py               metric/user/reference/unscaled modes
 │   ├── pipeline.py            perception -> FloorPlan
 │   └── visualize.py           2D floor-plan rendering
-└── floorplan/
-    ├── representation.py      Room, Furniture, Opening, FloorPlan
-    └── priors.py              furniture/opening dimensions and clamps
+├── floorplan/
+│   ├── representation.py      Room, Furniture, Opening, FloorPlan
+│   └── priors.py              furniture/opening dimensions and clamps
+└── scoring/
+    ├── grid.py                occupancy grid, distance transform, A*
+    ├── constraints.py         hard constraints / violations
+    ├── terms.py               soft scoring terms
+    ├── zones.py               door/window/clearance polygons
+    └── score.py               weighted total + metrics + JSON
 ```
 
 ## Roadmap
 
-Next stage is **constraint-based layout optimization** (`src/scoring/`, `src/optimization/`):
-constraints and weighted scoring over the `FloorPlan` representation (walkability, door/window
-clearance, wall affinity, pairwise overlaps), then a search (simulated annealing / genetic
-algorithm) and before/after visualization. Cached perception and geometry outputs stick to the
-same JSON contracts.
+Next stage is **layout generation/optimization** (`src/optimization/`): random feasible and
+wall-snapped sampling, greedy placement, simulated annealing with restarts/top-K diversity, and
+a DEAP genetic-algorithm comparison. The scorer already exposes per-term scores, hard-constraint
+violations, and layout metrics so candidate layouts can be compared apples-to-apples.

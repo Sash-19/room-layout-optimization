@@ -1,0 +1,41 @@
+grid:
+  resolution: 0.05
+
+constraints:
+  inside_tolerance_m: 0.001
+  overlap_tolerance_m2: 0.001
+  door_clear_depth_m: 0.9
+  door_clear_margin_m: 0.1
+  window_clear_depth_m: 0.3
+  tall_item_height_m: 1.0
+
+terms:
+  walkway_width_m: 0.6
+  wall_gap_ideal_m: 0.05
+  wall_gap_tolerance_m: 0.5
+  path_length_factor: 1.5
+  door_clear_depth_m: 0.9
+  door_clear_margin_m: 0.1
+  window_clear_depth_m: 0.3
+  tall_item_height_m: 1.0
+  pairs:
+    - classes: [chair, desk]
+      target_m: 0.7
+      sigma_m: 0.25
+    - classes: [chair, table]
+      target_m: 0.6
+      sigma_m: 0.25
+    - classes: [couch, table]
+      target_m: 1.0
+      sigma_m: 0.4
+
+weights:
+  overlap: 0.06
+  walk: 0.22
+  path: 0.08
+  wall: 0.14
+  door: 0.18
+  window: 0.04
+  util: 0.10
+  clear: 0.16
+  pair: 0.02
