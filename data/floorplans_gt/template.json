@@ -1,0 +1,54 @@
+{
+  "room": {
+    "polygon": [[0.0, 0.0], [4.0, 0.0], [4.0, 3.0], [0.0, 3.0], [0.0, 0.0]],
+    "openings": [
+      {
+        "kind": "door",
+        "wall_index": 0,
+        "offset": 2.0,
+        "width": 0.8,
+        "swing_radius": 0.8
+      },
+      {
+        "kind": "window",
+        "wall_index": 1,
+        "offset": 0.9,
+        "width": 1.2,
+        "swing_radius": 0.0
+      }
+    ],
+    "furniture": [
+      {
+        "class": "bed",
+        "w": 1.6,
+        "d": 2.0,
+        "x": 0.8,
+        "y": 1.5,
+        "theta_deg": 0.0,
+        "front_clearance": 0.6,
+        "wall_affinity": true,
+        "confidence": 1.0,
+        "locked": false
+      },
+      {
+        "class": "desk",
+        "w": 1.2,
+        "d": 0.6,
+        "x": 3.0,
+        "y": 2.5,
+        "theta_deg": 0.0,
+        "front_clearance": 0.75,
+        "wall_affinity": false,
+        "confidence": 1.0,
+        "locked": false
+      }
+    ]
+  },
+  "scale": 1.0,
+  "scale_mode": "user",
+  "camera_height": 1.5,
+  "metadata": {
+    "source": "hand-measured ground truth",
+    "notes": "Replace this template with real room measurements."
+  }
+}

@@ -217,6 +217,21 @@ Scoring uses a 5 cm occupancy grid (`src/scoring/grid.py`) with A* path lengths 
 transforms. Soft terms are `overlap`, `walk`, `path`, `wall`, `door`, `window`, `util`,
 `clear`, and optional `pair`; weights and thresholds live in `configs/scoring.yaml`.
 
+## 7. Measure geometry accuracy
+
+Hand-annotate measured rooms under `data/floorplans_gt/<room>/floorplan_gt.json` (see
+`data/floorplans_gt/README.md` and `template.json`), then:
+
+```bash
+python scripts/evaluate_geometry.py \
+    --predictions results/geometry \
+    --ground-truth data/floorplans_gt
+```
+
+Writes `results/geometry_eval/metrics.json` and `metrics.md` with room width/depth/area errors,
+furniture center/dimension errors, footprint IoU, and matched/false-positive/false-negative
+counts. The capture and annotation protocol is in `docs/own_room_dataset.md`.
+
 ## Tests
 
 ```bash
@@ -226,9 +241,9 @@ python -m pytest -q
 Covers schemas, taxonomy/aliasing, YOLO result post-processing, depth/structure post-processing,
 dataset merging/splitting, detection evaluation (matching + AP), perception/geometry pipelines,
 camera/floor-plane/scale estimation, lifting, the floor-plan representation/priors,
-occupancy-grid constraints/scoring terms, and visualization. The suite runs without
-torch/ultralytics installed; geometry/scoring tests need `shapely`, `scipy`, and `matplotlib`
-from `requirements.txt`.
+occupancy-grid constraints/scoring terms, geometry accuracy evaluation, and visualization. The
+suite runs without torch/ultralytics installed; geometry/scoring tests need `shapely`, `scipy`,
+and `matplotlib` from `requirements.txt`.
 
 ## Module map
 
@@ -252,6 +267,7 @@ src/
 │   ├── lift.py                bottom-edge projection, furniture/openings
 │   ├── scale.py               metric/user/reference/unscaled modes
 │   ├── pipeline.py            perception -> FloorPlan
+│   ├── evaluation.py          geometry accuracy vs hand measurements
 │   └── visualize.py           2D floor-plan rendering
 ├── floorplan/
 │   ├── representation.py      Room, Furniture, Opening, FloorPlan
