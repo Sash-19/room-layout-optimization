@@ -11,14 +11,15 @@ The full plan lives in [`../project plan.md`](../project%20plan.md).
 | Stage | Module | State |
 |-------|--------|-------|
 | 1. Perception (detection, segmentation, depth) | `src/perception/` | implemented |
-| 2. Geometry lifting (camera, floor plane, scale) | `src/geometry/` | not started |
-| 3. Floor plan representation | `src/floorplan/` | not started |
+| 2. Geometry lifting (camera, floor plane, scale) | `src/geometry/` | implemented |
+| 3. Floor plan representation | `src/floorplan/` | implemented |
 | 4. Scoring + layout optimization | `src/scoring/`, `src/optimization/` | not started |
 | 5. Visualization / end-to-end pipeline | `src/viz/`, `src/pipeline.py` | not started |
 
-This repository currently implements **Stage 1: Perception** and the dataset tooling that
-feeds it. Everything downstream has a stable data contract (`src/schemas.py`) so perception
-models can be swapped without touching later stages.
+This repository currently implements **Stages 1–3**: perception, geometry lifting, and the
+floor-plan representation/priors that the optimizer will consume. Everything downstream has a
+stable data contract (`src/schemas.py`, `src/floorplan/representation.py`) so models and
+components can be swapped without touching later stages.
 
 ## What the perception stage produces
 
@@ -157,6 +158,45 @@ wall_mask.png        structures.jpg        result.json
 by default, relative depth) and floor/wall segmenter (`segformer-b0` ADE20K). Set `metric: true`
 and a metric depth checkpoint to get depth in meters.
 
+## 5. Lift perception into a floor plan
+
+```bash
+# run perception and geometry in one call
+python scripts/run_geometry.py --config configs/geometry.yaml \
+    --image data/samples/bedroom1.jpg
+
+# reuse cached perception output
+python scripts/run_geometry.py --perception-dir results/perception/bedroom1 \
+    --scale-mode user --room-width 3.5 --room-depth 4.0
+
+# absolute scale from a known reference object instead
+python scripts/run_geometry.py --perception-dir results/perception/bedroom1 \
+    --scale-mode reference --reference-class door --reference-width 0.8
+```
+
+The geometry stage:
+
+- builds camera intrinsics from explicit config values, image EXIF, or a fallback FOV;
+- fits the floor plane with RANSAC on back-projected floor-mask depth;
+- calibrates Depth Anything's **relative inverse depth** against the floor so the plane is
+  metric-consistent up to one scale factor (metric depth skips this step);
+- estimates scale from `metric`, `user` room dimensions, a `reference` object width, or leaves
+  the plan `unscaled`;
+- projects each detection's bottom edge onto the floor, snaps orientation, and applies
+  furniture priors (`src/floorplan/priors.py`);
+- estimates the rectangular room boundary and assigns openings to walls.
+
+Writes to `results/geometry/<name>/`:
+
+```
+floorplan.json       floorplan.png
+```
+
+`floorplan.json` contains the room polygon, furniture footprints (meters, floor-frame
+coordinates), openings, scale mode/scale factor, camera height, and fit diagnostics/warnings.
+Relative depth is scale-free by nature, so pass `--room-width`/`--room-depth` (or a reference
+width) for metric output.
+
 ## Tests
 
 ```bash
@@ -164,8 +204,10 @@ python -m pytest -q
 ```
 
 Covers schemas, taxonomy/aliasing, YOLO result post-processing, depth/structure post-processing,
-dataset merging/splitting, detection evaluation (matching + AP), the perception pipeline, and
-visualization. The suite runs without torch/ultralytics installed.
+dataset merging/splitting, detection evaluation (matching + AP), perception/geometry pipelines,
+camera/floor-plane/scale estimation, lifting, the floor-plan representation/priors, and
+visualization. The suite runs without torch/ultralytics installed; geometry tests need
+`shapely` and `matplotlib` from `requirements.txt`.
 
 ## Module map
 
@@ -174,19 +216,31 @@ src/
 ├── schemas.py                 Detection, DepthMap, StructureMasks
 ├── utils.py                   YAML/JSON/image/device helpers
 ├── dataset.py                 COCO/YOLO -> unified YOLO dataset
-└── perception/
-    ├── taxonomy.py            unified classes + aliases
-    ├── detector.py            Ultralytics YOLO wrapper (train/infer)
-    ├── evaluation.py          unified-class mAP / P / R / F1
-    ├── depth.py               monocular depth (Depth Anything V2)
-    ├── structure.py           floor/wall segmentation (SegFormer ADE20K)
-    ├── pipeline.py            detection + depth + structure
-    └── visualize.py           boxes, masks, depth colormaps
+├── perception/
+│   ├── taxonomy.py            unified classes + aliases
+│   ├── detector.py            Ultralytics YOLO wrapper (train/infer)
+│   ├── evaluation.py          unified-class mAP / P / R / F1
+│   ├── depth.py               monocular depth (Depth Anything V2)
+│   ├── structure.py           floor/wall segmentation (SegFormer ADE20K)
+│   ├── pipeline.py            detection + depth + structure
+│   └── visualize.py           boxes, masks, depth colormaps
+├── geometry/
+│   ├── camera.py              intrinsics from config/EXIF/FOV, projection
+│   ├── floor_plane.py         RANSAC plane fit, inverse-depth calibration
+│   ├── room_boundary.py       floor frame + rectangular room estimate
+│   ├── lift.py                bottom-edge projection, furniture/openings
+│   ├── scale.py               metric/user/reference/unscaled modes
+│   ├── pipeline.py            perception -> FloorPlan
+│   └── visualize.py           2D floor-plan rendering
+└── floorplan/
+    ├── representation.py      Room, Furniture, Opening, FloorPlan
+    └── priors.py              furniture/opening dimensions and clamps
 ```
 
 ## Roadmap
 
-Next stage is **geometry lifting** (`src/geometry/`): camera intrinsics from EXIF/FOV,
-RANSAC floor-plane fit on back-projected depth, metric scale, projecting the bottom edge of
-each detection onto the floor plane, and room-boundary estimation. The detector/evaluator here
-already emit the contracts that stage consumes.
+Next stage is **constraint-based layout optimization** (`src/scoring/`, `src/optimization/`):
+constraints and weighted scoring over the `FloorPlan` representation (walkability, door/window
+clearance, wall affinity, pairwise overlaps), then a search (simulated annealing / genetic
+algorithm) and before/after visualization. Cached perception and geometry outputs stick to the
+same JSON contracts.
