@@ -1,0 +1,29 @@
+detector:
+  weights: yolov8s.pt
+  conf: 0.25
+  iou: 0.7
+  imgsz: 640
+  device: null
+  max_det: 300
+  half: false
+  drop_unknown: true
+  classes: []
+  class_map: {}
+
+depth:
+  enabled: true
+  model_id: depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf
+  device: null
+  metric: true
+  min_depth_m: 0.1
+  max_depth_m: 10.0
+
+structure:
+  enabled: true
+  model_id: nvidia/segformer-b0-finetuned-ade-512-512
+  device: null
+  floor_label_ids: [3]
+  wall_label_ids: [0]
+
+output:
+  dir: results/perception_metric

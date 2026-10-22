@@ -232,6 +232,26 @@ Writes `results/geometry_eval/metrics.json` and `metrics.md` with room width/dep
 furniture center/dimension errors, footprint IoU, and matched/false-positive/false-negative
 counts. The capture and annotation protocol is in `docs/own_room_dataset.md`.
 
+## 8. Run the scale-calibration experiment (E2)
+
+```bash
+# relative-depth perception, compare all modes
+python scripts/run_e2_scale.py \
+    --perception-dir results/perception/bedroom1 \
+    --room-width 3.5 --room-depth 4.0
+
+# metric-depth perception
+python scripts/run_perception.py --config configs/perception_metric.yaml \
+    --image data/samples/bedroom1.jpg
+python scripts/run_e2_scale.py \
+    --perception-dir results/perception_metric/bedroom1 \
+    --modes metric,reference,user --room-width 3.5 --room-depth 4.0
+```
+
+Each mode writes a floor plan, score JSON, and a combined `e2_scale.json` / `e2_scale.md`
+table. Pass `--ground-truth data/floorplans_gt/<room>/floorplan_gt.json` to add room/furniture
+accuracy columns.
+
 ## Tests
 
 ```bash
@@ -258,6 +278,7 @@ src/
 │   ├── evaluation.py          unified-class mAP / P / R / F1
 │   ├── depth.py               monocular depth (Depth Anything V2)
 │   ├── structure.py           floor/wall segmentation (SegFormer ADE20K)
+│   ├── cache.py               reload cached perception outputs
 │   ├── pipeline.py            detection + depth + structure
 │   └── visualize.py           boxes, masks, depth colormaps
 ├── geometry/

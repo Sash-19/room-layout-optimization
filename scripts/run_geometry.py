@@ -5,7 +5,6 @@ import sys
 from pathlib import Path
 
 import matplotlib
-import numpy as np
 from PIL import Image
 
 matplotlib.use("Agg")
@@ -16,9 +15,9 @@ if str(ROOT) not in sys.path:
 
 from src.geometry.pipeline import GeometryPipeline
 from src.geometry.visualize import save_floorplan
+from src.perception.cache import load_cached_perception
 from src.perception.pipeline import PerceptionPipeline, PerceptionResult
-from src.schemas import DepthMap, Detection, StructureMasks
-from src.utils import ensure_dir, load_image, load_json, load_yaml, parse_device, save_json
+from src.utils import ensure_dir, load_image, load_yaml, parse_device, save_json
 
 
 def parse_args() -> argparse.Namespace:
@@ -62,38 +61,6 @@ def build_perception_pipeline(args: argparse.Namespace) -> PerceptionPipeline:
     )
 
 
-def load_perception_dir(path: Path) -> tuple[Image.Image, PerceptionResult]:
-    image = load_image(path / "input.jpg")
-    payload = load_json(path / "result.json")
-    detections = [Detection.from_dict(item) for item in payload.get("detections", [])]
-
-    depth = None
-    depth_path = path / "depth.npy"
-    if depth_path.exists():
-        depth_info = payload.get("depth") or {}
-        depth = DepthMap(
-            np.load(depth_path),
-            metric=bool(depth_info.get("metric", False)),
-            source=str(depth_info.get("source", "cached")),
-        )
-
-    structures = None
-    floor_path = path / "floor_mask.png"
-    wall_path = path / "wall_mask.png"
-    if floor_path.exists() and wall_path.exists():
-        floor = np.asarray(Image.open(floor_path).convert("L")) > 127
-        wall = np.asarray(Image.open(wall_path).convert("L")) > 127
-        structures = StructureMasks(floor, wall, source="cached")
-
-    result = PerceptionResult(
-        detections=detections,
-        image_size=image.size,
-        depth=depth,
-        structures=structures,
-    )
-    return image, result
-
-
 def main() -> int:
     args = parse_args()
     if bool(args.image) == bool(args.perception_dir):
@@ -121,7 +88,7 @@ def main() -> int:
             if not (path / "input.jpg").exists():
                 print(f"Perception directory missing input.jpg: {path}", file=sys.stderr)
                 continue
-            image, result = load_perception_dir(path)
+            image, result = load_cached_perception(path)
             items.append((path.name, image, result))
 
     if not items:
