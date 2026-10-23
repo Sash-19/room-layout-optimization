@@ -1,0 +1,11 @@
+algorithm: random
+seed: 0
+rotation_step_deg: 90
+sampling:
+  pose_attempts: 80
+  wall_snap_probability: 0.7
+random:
+  iterations: 300
+  max_layout_attempts: 40
+greedy:
+  candidates_per_item: 120

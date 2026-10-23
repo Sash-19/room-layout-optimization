@@ -13,7 +13,7 @@ The full plan lives in [`../project plan.md`](../project%20plan.md).
 | 1. Perception (detection, segmentation, depth) | `src/perception/` | implemented |
 | 2. Geometry lifting (camera, floor plane, scale) | `src/geometry/` | implemented |
 | 3. Floor plan representation | `src/floorplan/` | implemented |
-| 4. Scoring + layout optimization | `src/scoring/`, `src/optimization/` | scoring implemented; optimizer not started |
+| 4. Scoring + layout optimization | `src/scoring/`, `src/optimization/` | scoring + random/greedy baseline implemented; SA not started |
 | 5. Visualization / end-to-end pipeline | `src/viz/`, `src/pipeline.py` | not started |
 
 This repository currently implements **Stages 1–3 plus the scoring half of Stage 4**: perception,
@@ -266,6 +266,24 @@ Each mode writes a floor plan, score JSON, and a combined `e2_scale.json` / `e2_
 table. Pass `--ground-truth data/floorplans_gt/<room>/floorplan_gt.json` to add room/furniture
 accuracy columns.
 
+## 9. Optimize a floor plan
+
+```bash
+# random-search and greedy baselines, compare both
+python scripts/optimize_floorplan.py \
+    --floorplan results/geometry/bedroom1/floorplan.json \
+    --algorithm both
+
+# one algorithm
+python scripts/optimize_floorplan.py \
+    --floorplan results/geometry/bedroom1/floorplan.json --algorithm greedy
+```
+
+Reads `configs/optimizer.yaml` and `configs/scoring.yaml`, keeps `locked` furniture fixed, and
+writes the best floor plan plus `*_result.json` / `*_summary.md` under `results/optimization/`.
+Random search samples feasible layouts; greedy places wall-affinity/large items first and picks
+the best partial score. Simulated annealing is the next planned optimizer.
+
 ## Tests
 
 ```bash
@@ -275,7 +293,8 @@ python -m pytest -q
 Covers schemas, taxonomy/aliasing, YOLO result post-processing, depth/structure post-processing,
 dataset merging/splitting, detection evaluation (matching + AP), perception/geometry pipelines,
 camera/floor-plane/scale estimation, lifting, the floor-plan representation/priors,
-occupancy-grid constraints/scoring terms, geometry accuracy evaluation, and visualization. The
+occupancy-grid constraints/scoring terms, random/greedy optimization, geometry accuracy
+evaluation, and visualization. The
 suite runs without torch/ultralytics installed; geometry/scoring tests need `shapely`, `scipy`,
 and `matplotlib` from `requirements.txt`.
 
@@ -313,11 +332,16 @@ src/
     ├── terms.py               soft scoring terms
     ├── zones.py               door/window/clearance polygons
     └── score.py               weighted total + metrics + JSON
+    ├── optimization/
+    │   ├── sampling.py           feasible/wall-snapped pose sampling
+    │   ├── random_search.py      random feasible baseline
+    │   └── greedy.py             greedy sequential placement
 ```
 
 ## Roadmap
 
-Next stage is **layout generation/optimization** (`src/optimization/`): random feasible and
-wall-snapped sampling, greedy placement, simulated annealing with restarts/top-K diversity, and
-a DEAP genetic-algorithm comparison. The scorer already exposes per-term scores, hard-constraint
-violations, and layout metrics so candidate layouts can be compared apples-to-apples.
+Next is **simulated annealing** (`src/optimization/annealing.py`): perturbation moves,
+geometric cooling, restarts/top-K diversity, and a DEAP genetic-algorithm comparison. Random
+feasible search and greedy sequential placement are already implemented. The scorer exposes
+per-term scores, hard-constraint violations, and layout metrics so candidate layouts can be
+compared apples-to-apples.
