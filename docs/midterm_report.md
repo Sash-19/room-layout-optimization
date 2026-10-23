@@ -92,7 +92,8 @@ Scale modes in E2:
 | E1 comparison harness | Implemented; needs full dataset and training run |
 | E2 scale harness | Implemented; smoke-tested with relative and metric depth |
 | Own-room dataset | Protocol/template ready; photos and measurements pending |
-| Optimizer | Random/greedy/SA implemented; GA and E3 pending |
+| Optimizer | Random/greedy/SA implemented; GA pending |
+| E3 comparison harness | Implemented; smoke-tested on 2 rooms |
 
 ## 6. Smoke checks
 
@@ -124,7 +125,7 @@ Optimizer smoke check on the `000000000632` plan:
 |---|---:|---:|---:|---|
 | random search | 0.9085 | 0.9091 | +0.0005 | yes |
 | greedy | 0.9085 | 0.9129 | +0.0044 | yes |
-| simulated annealing | 0.9085 | 0.9114 | +0.0029 | yes |
+| simulated annealing | 0.9085 | 0.9144 | +0.0059 | yes |
 
 ## 7. Failure cases
 

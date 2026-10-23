@@ -17,3 +17,4 @@ annealing:
   step_m: 0.4
   move_attempts: 25
   top_k: 3
+  warm_start: greedy

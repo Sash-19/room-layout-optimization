@@ -130,6 +130,7 @@ def simulated_annealing(
     start_temp = float(annealing.get("start_temp", 0.05))
     end_temp = float(annealing.get("end_temp", 0.001))
     top_k = max(1, int(annealing.get("top_k", 3)))
+    warm_start = str(annealing.get("warm_start", "")).lower()
 
     initial_score = scorer.evaluate(plan)
     best_plan = clone_plan(plan)
@@ -166,10 +167,39 @@ def simulated_annealing(
         top_plans[:] = [top_plans[i] for i in order[:top_k]]
         top_scores[:] = [top_scores[i] for i in order[:top_k]]
 
+    warm_plan: FloorPlan | None = None
+    if warm_start in {"greedy", "random"}:
+        if warm_start == "greedy":
+            from .greedy import greedy_search
+
+            warm = greedy_search(plan, scorer, config)
+        else:
+            from .random_search import random_search
+
+            warm = random_search(plan, scorer, config)
+        evaluations += max(0, warm.evaluations - 1)
+        feasible_layouts += max(0, warm.feasible_layouts - (1 if warm.initial_score.feasible else 0))
+        warm_plan = warm.best_plan
+        if score_rank(warm.best_score) > score_rank(best_score):
+            best_plan, best_score = clone_plan(warm.best_plan), warm.best_score
+        remember(warm.best_plan, warm.best_score)
+        history.append(
+            {
+                "evaluation": evaluations - 1,
+                "restart": 0,
+                "iteration": 0,
+                "temperature": round(start_temp, 6),
+                "score": round(warm.best_score.total, 4),
+                "feasible": warm.best_score.feasible,
+                "violations": len(warm.best_score.violations),
+                "warm_start": warm_start,
+            }
+        )
+
     remember(plan, initial_score)
     for restart in range(restarts):
         if restart == 0:
-            current_plan = clone_plan(plan)
+            current_plan = clone_plan(warm_plan or plan)
         else:
             current_plan = sample_layout(plan, rng, config) or clone_plan(plan)
         current_score = scorer.evaluate(current_plan)

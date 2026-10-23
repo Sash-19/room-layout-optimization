@@ -281,8 +281,22 @@ python scripts/optimize_floorplan.py \
 Reads `configs/optimizer.yaml` and `configs/scoring.yaml`, keeps `locked` furniture fixed, and
 writes the best floor plan plus `*_result.json` / `*_summary.md` under `results/optimization/`.
 Random search samples feasible layouts; greedy places wall-affinity/large items first and picks
-the best partial score; simulated annealing perturbs poses with a geometric cooling schedule,
-restarts, and returns top-K feasible layouts. `--algorithm both` runs random + greedy.
+the best partial score; simulated annealing warm-starts from greedy, perturbs poses with a geometric
+cooling schedule, restarts, and returns top-K feasible layouts. `--algorithm both` runs
+random + greedy.
+
+## 10. Run the E3 optimization comparison
+
+```bash
+python scripts/run_e3_optimization.py \
+    --floorplans results/geometry \
+    --algorithms random greedy annealing
+```
+
+Runs the detection-only baseline and each optimizer over every discovered `floorplan.json`,
+then writes `e3_optimization.json` / `e3_optimization.md` with score deltas, feasibility,
+evaluations, and runtime. Best layouts are saved per room and algorithm under
+`results/experiments/e3_optimization/`.
 
 ## Tests
 
@@ -294,9 +308,9 @@ Covers schemas, taxonomy/aliasing, YOLO result post-processing, depth/structure 
 dataset merging/splitting, detection evaluation (matching + AP), perception/geometry pipelines,
 camera/floor-plane/scale estimation, lifting, the floor-plan representation/priors,
 occupancy-grid constraints/scoring terms, random/greedy/simulated-annealing optimization,
-geometry accuracy evaluation, and visualization. The suite runs without torch/ultralytics
-installed; geometry/scoring tests need `shapely`, `scipy`, and `matplotlib` from
-`requirements.txt`.
+E3 reporting, geometry accuracy evaluation, and visualization. The suite runs without
+torch/ultralytics installed; geometry/scoring tests need `shapely`, `scipy`, and `matplotlib`
+from `requirements.txt`.
 
 ## Module map
 
@@ -336,7 +350,8 @@ src/
     │   ├── sampling.py           feasible/wall-snapped pose sampling
     │   ├── random_search.py      random feasible baseline
     │   ├── greedy.py             greedy sequential placement
-    │   └── annealing.py          simulated annealing + top-K
+    │   ├── annealing.py          simulated annealing + top-K
+    │   └── reporting.py          E3 aggregate tables
 ```
 
 ## Roadmap
