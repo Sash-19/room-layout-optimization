@@ -64,8 +64,18 @@ overrides go in a `class_map` in the config.
 
 ## 1. Prepare the dataset
 
-Merge COCO / Open Images / Roboflow sources into one YOLO-format dataset with the unified
-taxonomy and a 70/15/15 split. Fill in `data.sources` in `configs/detection.yaml`:
+For a small reproducible Open Images room subset, download images and YOLO labels with:
+
+```bash
+python scripts/download_openimages_subset.py --out data/raw/openimages --max-images 400 --min-per-class 40
+```
+
+This uses the Open Images V5 validation annotations and downloads only selected images, so it
+is much smaller than the full dataset. The generated source is already wired into
+`configs/detection.yaml`.
+
+To merge COCO / Open Images / Roboflow sources into one YOLO-format dataset with the unified
+taxonomy and a 70/15/15 split, fill in `data.sources` in `configs/detection.yaml`:
 
 ```yaml
 data:
@@ -83,15 +93,8 @@ data:
         dining table: table
     - name: openimages_rooms
       type: yolo
-      root: data/raw/openimages/yolo
-      names: [Sofa, Cupboard, Wardrobe, Door, Window]
-      class_map:
-        Sofa: couch
-        Cupboard: cabinet
-        Wardrobe: cabinet
-        Door: door
-        Window: window
-      split: train
+      root: data/raw/openimages
+      names: [bed, desk, chair, couch, table, cabinet, door, window]
 ```
 
 Then:

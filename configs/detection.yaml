@@ -8,7 +8,11 @@ data:
   keep_source_splits: false
   copy_mode: copy
   verify_images: false
-  sources: []
+  sources:
+    - name: openimages_rooms
+      type: yolo
+      root: data/raw/openimages
+      names: [bed, desk, chair, couch, table, cabinet, door, window]
 
 model:
   weights: yolov8s.pt
