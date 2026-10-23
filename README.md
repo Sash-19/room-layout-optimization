@@ -13,7 +13,7 @@ The full plan lives in [`../project plan.md`](../project%20plan.md).
 | 1. Perception (detection, segmentation, depth) | `src/perception/` | implemented |
 | 2. Geometry lifting (camera, floor plane, scale) | `src/geometry/` | implemented |
 | 3. Floor plan representation | `src/floorplan/` | implemented |
-| 4. Scoring + layout optimization | `src/scoring/`, `src/optimization/` | scoring + random/greedy baseline implemented; SA not started |
+| 4. Scoring + layout optimization | `src/scoring/`, `src/optimization/` | scoring + random/greedy/SA implemented; GA not started |
 | 5. Visualization / end-to-end pipeline | `src/viz/`, `src/pipeline.py` | not started |
 
 This repository currently implements **Stages 1–3 plus the scoring half of Stage 4**: perception,
@@ -269,20 +269,20 @@ accuracy columns.
 ## 9. Optimize a floor plan
 
 ```bash
-# random-search and greedy baselines, compare both
+# default: simulated annealing (primary optimizer)
 python scripts/optimize_floorplan.py \
-    --floorplan results/geometry/bedroom1/floorplan.json \
-    --algorithm both
+    --floorplan results/geometry/bedroom1/floorplan.json
 
-# one algorithm
+# compare all implemented optimizers
 python scripts/optimize_floorplan.py \
-    --floorplan results/geometry/bedroom1/floorplan.json --algorithm greedy
+    --floorplan results/geometry/bedroom1/floorplan.json --algorithm all
 ```
 
 Reads `configs/optimizer.yaml` and `configs/scoring.yaml`, keeps `locked` furniture fixed, and
 writes the best floor plan plus `*_result.json` / `*_summary.md` under `results/optimization/`.
 Random search samples feasible layouts; greedy places wall-affinity/large items first and picks
-the best partial score. Simulated annealing is the next planned optimizer.
+the best partial score; simulated annealing perturbs poses with a geometric cooling schedule,
+restarts, and returns top-K feasible layouts. `--algorithm both` runs random + greedy.
 
 ## Tests
 
@@ -293,10 +293,10 @@ python -m pytest -q
 Covers schemas, taxonomy/aliasing, YOLO result post-processing, depth/structure post-processing,
 dataset merging/splitting, detection evaluation (matching + AP), perception/geometry pipelines,
 camera/floor-plane/scale estimation, lifting, the floor-plan representation/priors,
-occupancy-grid constraints/scoring terms, random/greedy optimization, geometry accuracy
-evaluation, and visualization. The
-suite runs without torch/ultralytics installed; geometry/scoring tests need `shapely`, `scipy`,
-and `matplotlib` from `requirements.txt`.
+occupancy-grid constraints/scoring terms, random/greedy/simulated-annealing optimization,
+geometry accuracy evaluation, and visualization. The suite runs without torch/ultralytics
+installed; geometry/scoring tests need `shapely`, `scipy`, and `matplotlib` from
+`requirements.txt`.
 
 ## Module map
 
@@ -335,13 +335,13 @@ src/
     ├── optimization/
     │   ├── sampling.py           feasible/wall-snapped pose sampling
     │   ├── random_search.py      random feasible baseline
-    │   └── greedy.py             greedy sequential placement
+    │   ├── greedy.py             greedy sequential placement
+    │   └── annealing.py          simulated annealing + top-K
 ```
 
 ## Roadmap
 
-Next is **simulated annealing** (`src/optimization/annealing.py`): perturbation moves,
-geometric cooling, restarts/top-K diversity, and a DEAP genetic-algorithm comparison. Random
-feasible search and greedy sequential placement are already implemented. The scorer exposes
-per-term scores, hard-constraint violations, and layout metrics so candidate layouts can be
-compared apples-to-apples.
+Next is the **genetic-algorithm comparison** and end-to-end/visualization work. Simulated
+annealing, random feasible search, and greedy sequential placement are implemented. The scorer
+exposes per-term scores, hard-constraint violations, and layout metrics so candidate layouts can
+be compared apples-to-apples.

@@ -4,7 +4,7 @@ import pytest
 from shapely.geometry import box
 
 from src.floorplan.representation import FloorPlan, Furniture, Opening, Room
-from src.optimization import greedy_search, random_search
+from src.optimization import greedy_search, random_search, simulated_annealing
 from src.scoring.score import LayoutScorer
 
 
@@ -93,3 +93,39 @@ def test_wall_affinity_item_snaps_to_a_wall():
 
     assert couch.footprint.distance(result.best_plan.room.polygon.boundary) <= 0.11
     assert min(abs(couch.theta - angle) for angle in (0.0, math.pi / 2, math.pi, -math.pi / 2)) < 1e-6
+
+
+def test_simulated_annealing_improves_and_returns_top_k():
+    plan = make_plan(
+        furniture=[
+            Furniture("bed", 1.6, 2.0, 0.8, 1.0, wall_affinity=True),
+            Furniture("desk", 1.2, 0.6, 4.0, 2.0),
+            Furniture("chair", 0.5, 0.5, 4.0, 2.0),
+        ]
+    )
+    scorer = LayoutScorer.from_config({"grid": {"resolution": 0.1}})
+    initial = scorer.evaluate(plan)
+    config = make_config(
+        annealing={
+            "iterations": 150,
+            "restarts": 2,
+            "start_temp": 0.05,
+            "end_temp": 0.001,
+            "step_m": 0.5,
+            "move_attempts": 30,
+            "top_k": 3,
+        }
+    )
+
+    result = simulated_annealing(plan, scorer, config)
+
+    assert result.best_score.feasible
+    assert result.best_score.total >= initial.total
+    assert result.evaluations > 1
+    assert 1 <= len(result.top_plans) <= 3
+    keys = {
+        tuple((round(item.x, 2), round(item.y, 2), round(item.theta, 2)) for item in top.room.furniture)
+        for top in result.top_plans
+    }
+    assert len(keys) == len(result.top_plans)
+

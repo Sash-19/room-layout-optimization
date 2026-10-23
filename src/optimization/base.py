@@ -19,6 +19,8 @@ class OptimizationResult:
     feasible_layouts: int
     history: list[dict[str, Any]] = field(default_factory=list)
     config: dict[str, Any] = field(default_factory=dict)
+    top_plans: list[FloorPlan] = field(default_factory=list)
+    top_scores: list[ScoreResult] = field(default_factory=list)
 
     @property
     def improvement(self) -> float:
@@ -39,6 +41,10 @@ class OptimizationResult:
             "feasible_layouts": self.feasible_layouts,
             "history": self.history,
             "config": self.config,
+            "top_layouts": [
+                {"score": score.to_dict(), "plan": plan.to_dict() if include_plan else None}
+                for plan, score in zip(self.top_plans, self.top_scores)
+            ],
         }
         if include_plan:
             payload["best_plan"] = self.best_plan.to_dict()

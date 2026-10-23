@@ -1,4 +1,4 @@
-algorithm: random
+algorithm: annealing
 seed: 0
 rotation_step_deg: 90
 sampling:
@@ -9,3 +9,11 @@ random:
   max_layout_attempts: 40
 greedy:
   candidates_per_item: 120
+annealing:
+  iterations: 600
+  restarts: 2
+  start_temp: 0.05
+  end_temp: 0.001
+  step_m: 0.4
+  move_attempts: 25
+  top_k: 3

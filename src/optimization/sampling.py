@@ -92,6 +92,15 @@ def _candidate_ok(room: Room, placed: list[Furniture], candidate: Furniture, con
     return not check_constraints(partial, scoring_settings(config))
 
 
+def candidate_is_valid(
+    room: Room,
+    placed: list[Furniture],
+    candidate: Furniture,
+    config: dict | None = None,
+) -> bool:
+    return _candidate_ok(room, placed, candidate, config)
+
+
 def sample_pose(
     room: Room,
     item: Furniture,

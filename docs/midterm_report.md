@@ -4,7 +4,8 @@
 
 This checkpoint covers the first half of the project: turning a single room photograph into a
 structured 2D floor plan, checking that plan against hard constraints, and scoring it. The
-optimizer and final evaluation are planned for the second half.
+optimizer is now implemented as well; the final evaluation and visualization are planned for
+the second half.
 
 Implemented at this checkpoint:
 
@@ -13,6 +14,8 @@ Implemented at this checkpoint:
   furniture footprint lifting, opening placement.
 - Representation: JSON floor plan with rooms, furniture, openings, and metric units.
 - Scoring: 5 cm occupancy grid, hard constraints, soft terms, and a weighted score.
+- Optimization: random feasible search, greedy sequential placement, and simulated annealing
+  with restarts and top-K layouts.
 - Evaluation tooling: unified-class detector mAP, geometry accuracy, and E1/E2 experiment
   harnesses.
 
@@ -37,7 +40,7 @@ flowchart LR
     D --> F[Scoring terms]
     E --> G[Weighted score + violations]
     F --> G
-    D --> H[Optimizer planned]
+    D --> H[Optimizer]
     H --> E
 ```
 
@@ -89,7 +92,7 @@ Scale modes in E2:
 | E1 comparison harness | Implemented; needs full dataset and training run |
 | E2 scale harness | Implemented; smoke-tested with relative and metric depth |
 | Own-room dataset | Protocol/template ready; photos and measurements pending |
-| Optimizer | Not started (second half) |
+| Optimizer | Random/greedy/SA implemented; GA and E3 pending |
 
 ## 6. Smoke checks
 
@@ -115,6 +118,14 @@ Relative-depth perception on `000000000139` (table + 3 chairs): score `0.8885`, 
 to chair/table overlaps. `000000000632`: score `0.9085`, infeasible because the bed and chair
 fall outside the estimated room.
 
+Optimizer smoke check on the `000000000632` plan:
+
+| Algorithm | Initial | Best | Improvement | Feasible |
+|---|---:|---:|---:|---|
+| random search | 0.9085 | 0.9091 | +0.0005 | yes |
+| greedy | 0.9085 | 0.9129 | +0.0044 | yes |
+| simulated annealing | 0.9085 | 0.9114 | +0.0029 | yes |
+
 ## 7. Failure cases
 
 - A single photo often shows only part of the floor, so the rectangular room can be too small.
@@ -132,15 +143,15 @@ fall outside the estimated room.
 - Own-room photos and hand measurements are needed for geometry accuracy.
 - Metric-depth checkpoint is validated for inference, but the room estimate still needs
   measured ground truth.
-- Optimizer and E3 experiments are second-half work.
+- GA comparison, E3, and end-to-end visualization are second-half work.
 
 ## 9. Next steps
 
 1. Prepare/verify the full detection dataset and run E1 training and comparison.
 2. Capture own-room photos and measurements; run `scripts/evaluate_geometry.py`.
-3. Build the optimizer (random/greedy then simulated annealing) against `LayoutScorer`.
-4. Add E3 synthetic experiments and failure-case visualizations.
-5. Finalize the report with measured E1/E2/geometry tables.
+3. Add the GA comparison, E3 synthetic experiments, and failure-case visualizations.
+4. Build the end-to-end image-to-optimized-plan CLI and before/after visualization.
+5. Finalize the report with measured E1/E2/geometry/optimizer tables.
 
 ## Appendix: commands
 
@@ -159,4 +170,8 @@ python scripts/run_e2_scale.py --perception-dir results/perception/room1 \
 python scripts/evaluate_geometry.py \
     --predictions results/geometry \
     --ground-truth data/floorplans_gt
+
+# Optimizer comparison
+python scripts/optimize_floorplan.py \
+    --floorplan results/geometry/room1/floorplan.json --algorithm all
 ```
