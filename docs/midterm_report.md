@@ -1,7 +1,8 @@
 # Midterm Report: 2D Room Layout Representation
 
-**Status:** draft. The pipeline, scorer, and optimizer are implemented and smoke-tested. Measured
-E1, E2, and geometry-accuracy results are still pending the datasets described in Section 5.
+**Status:** draft. The pipeline, scorer, and optimizer are implemented and smoke-tested. E1 now
+has a measured comparison on a small Open Images subset; E2 and geometry-accuracy results still
+need the measured room data described in Section 5.
 
 ## 1. Scope
 
@@ -66,8 +67,8 @@ still receiving a low walking score.
 | Shapely | 2.2.0 |
 | NumPy | 2.5.2 |
 
-Smoke runs were CPU-only. Fine-tuning is intended for a GPU; the implementation does not require
-one for inference of the small models.
+All reported runs were CPU-only. Fine-tuning is intended for a GPU; the implementation does not
+require one for inference of the small models.
 
 ### 4.2 Perception
 
@@ -85,8 +86,10 @@ one for inference of the small models.
 - Detection evaluation: confidence 0.001 for AP, report confidence 0.25, IoU thresholds
   0.50:0.05:0.95.
 
-These are configuration defaults; the full training run has not been executed because the
-processed dataset is not yet populated.
+These are configuration defaults. The current E1 run used a smaller setup: 20 epochs, batch 16,
+640 px, on the 400-image Open Images subset, because the full dataset is much larger than the
+available CPU-only environment. The reported E1 numbers are therefore a small-subset result, not
+a full-benchmark result.
 
 ### 4.4 Geometry, scoring, and optimization
 
@@ -101,17 +104,21 @@ processed dataset is not yet populated.
 
 ## 5. Dataset status
 
-The repository contains the data tooling and schemas, but not the measured evaluation data yet.
+The detection dataset is now populated; the measured room data is still missing.
 
 | Dataset | Status |
 |---|---|
-| Detection training set (`data/processed`) | Empty; `data.sources` in `configs/detection.yaml` is not populated |
+| Detection training set (`data/processed`) | 400 Open Images V5 validation images; 280/60/60 train/val/test; 1,999 instances |
 | Own-room photographs and measurements | Not collected; only the capture protocol and GT template exist |
 | Smoke photographs | Two COCO room images (`000000000139`, `000000000632`) with cached perception outputs |
 
-The planned detection sources are COCO, Open Images, and Roboflow room datasets, merged into the
-unified taxonomy with the 70/15/15 split. The own-room protocol is documented in
-`docs/own_room_dataset.md`; ground-truth JSON uses `data/floorplans_gt/<room>/floorplan_gt.json`.
+The detection subset is downloaded with `scripts/download_openimages_subset.py`, which selects
+images containing the unified classes and writes YOLO labels. It is merged into the unified
+taxonomy with the 70/15/15 split. Class counts are: bed 60, desk 170, chair 493, couch 51,
+table 417, cabinet 195, door 133, window 480 across all splits. The subset is intentionally small
+for CPU-only iteration; the full planned sources are COCO, Open Images, and Roboflow room data.
+The own-room protocol is documented in `docs/own_room_dataset.md`; ground-truth JSON uses
+`data/floorplans_gt/<room>/floorplan_gt.json`.
 
 Own-room capture plan: 3-5 landscape photos per room at roughly chest height, including a
 doorway view and views that show the floor-wall boundary. Hand measurements cover room width and
@@ -122,7 +129,7 @@ depth, door/window offsets and widths, and each movable item's class, dimensions
 
 | ID | Question | Inputs | Metrics |
 |---|---|---|---|
-| E1 | Does fine-tuning beat zero-shot detection? | COCO/Open Images/Roboflow room images | mAP@0.5, mAP@0.5:0.95, P, R, F1 |
+| E1 | Does fine-tuning beat zero-shot detection? | Open Images room subset | mAP@0.5, mAP@0.5:0.95, P, R, F1 |
 | E2 | Which scale source is accurate enough? | Single photos + depth + measured room | room width/depth error, furniture position error, feasibility |
 | Geometry | How accurate is the lifted plan? | Own-room photos + hand measurements | room error, furniture center/dim error, footprint IoU |
 | E3 | Does optimization improve layouts? | Detected and synthetic floor plans | score delta, feasibility rate, evaluations, runtime |
@@ -144,14 +151,29 @@ Scale modes in E2:
 
 | Experiment | Status | Blocker |
 |---|---|---|
-| E1 detector comparison | Pending | Full processed dataset and training run |
+| E1 detector comparison | Measured on 400-image subset | Larger/GPU training run for a stronger benchmark |
 | E2 scale comparison | Smoke only | Measured room/furniture ground truth; working reference mode |
 | Geometry accuracy | Pending | Own-room photos and hand measurements |
 | E3 optimization comparison | Smoke only | Larger set of detected and synthetic floor plans |
 
-The numbers in Section 7.2 are pipeline checks, not benchmark results.
+The E1 table below is a real comparison on the prepared subset. The numbers in Section 7.3 are
+pipeline checks, not benchmark results.
 
-### 7.2 Smoke checks
+### 7.2 E1 detector comparison
+
+Zero-shot YOLOv8s vs. YOLOv8s fine-tuned for 20 epochs on the 400-image subset, evaluated on the
+60-image test split:
+
+| Model | mAP@0.5 | mAP@0.5:0.95 | Precision | Recall | F1 |
+|---|---:|---:|---:|---:|---:|
+| zero-shot | 0.2260 | 0.1957 | 0.2724 | 0.2500 | 0.2607 |
+| fine-tuned | 0.3025 | 0.1861 | 0.4257 | 0.3630 | 0.3919 |
+
+Fine-tuning raises mAP@0.5 by 0.0765, precision by 0.1533, recall by 0.1130, and F1 by 0.1312.
+mAP@0.5:0.95 is slightly lower (-0.0096), so the gain is concentrated at the looser IoU
+threshold and the subset is too small to claim a broad detector improvement.
+
+### 7.3 Smoke checks
 
 Relative-depth perception on `000000000632` (bed + chair):
 
@@ -231,33 +253,33 @@ outside it.*
   regions, and its score gains on already-reasonable layouts are small.
 - Simulated annealing is much slower than greedy on the smoke plans (about 6-7x) for a modest
   score improvement; the current schedule is not yet tuned.
-- There is no measured validation yet, so the smoke scores cannot support accuracy claims.
+- E2 and geometry scores still lack measured room/furniture ground truth.
 
 ## 9. Open issues
 
-- Full E1 dataset preparation and fine-tuning are not run; the comparison table is pending.
+- E1 uses a 400-image subset and 20 CPU epochs; a larger/GPU run is needed before strong claims.
 - Own-room photos and hand measurements are needed for geometry accuracy.
 - Metric-depth inference works, but the room estimate still needs measured ground truth.
 - Reference-scale calibration needs detected or annotated openings.
 - GA comparison, larger E3 runs, and end-to-end visualization are second-half work.
-- The report needs a final pass with measured tables, figure numbering, and submission formatting.
+- The report needs a final pass with measured E2/geometry tables, figure numbering, and submission formatting.
 
 ## 10. Next steps
 
-1. Populate and verify the full detection dataset; run E1 training and comparison.
+1. Scale up or GPU-train E1 and rerun the comparison on a held-out split.
 2. Capture own-room photos and measurements; run `scripts/evaluate_geometry.py`.
 3. Measure rooms for E2 and fix reference-scale calibration.
 4. Run E3 on a larger set, including synthetic bad layouts and before/after figures.
 5. Add the GA comparison and end-to-end image-to-optimized-plan CLI.
-6. Finalize the report with measured E1/E2/geometry/E3 tables and citations.
+6. Finalize the report with measured E2/geometry/E3 tables and citations.
 
 ## 11. Conclusion
 
 The midterm checkpoint delivers a working 2D representation and a reproducible evaluation
 scaffold: perception, geometry lifting, constraint checking, scoring, and three optimizers all
-run end-to-end on smoke images. The main unresolved item is measured validation. The code is
-ready for the full datasets, but the current report cannot yet claim detector, geometry, or
-scale accuracy beyond the qualitative smoke checks shown above.
+run end-to-end on smoke images. E1 now has a measured subset result showing a higher mAP@0.5
+after fine-tuning, but E2 and geometry accuracy still need measured room data, so the report
+does not yet claim scale or geometry accuracy.
 
 ## 12. References
 
@@ -280,10 +302,14 @@ Citations should be rechecked against the publisher or arXiv records before fina
 ## Appendix: commands
 
 ```bash
+# Data setup
+python scripts/download_openimages_subset.py --out data/raw/openimages
+python scripts/prepare_dataset.py --config configs/detection.yaml --copy-mode link
+
 # E1
 python scripts/run_e1_detector.py --config configs/detection.yaml \
     --data data/processed --split test \
-    --weights yolov8s.pt runs/detect/train/weights/best.pt \
+    --weights yolov8s.pt runs/detect/runs/detect/openimages_20e/weights/best.pt \
     --labels zero_shot fine_tuned
 
 # E2
