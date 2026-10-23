@@ -1,11 +1,13 @@
 # Midterm Report: 2D Room Layout Representation
 
+**Status:** draft. The pipeline, scorer, and optimizer are implemented and smoke-tested. Measured
+E1, E2, and geometry-accuracy results are still pending the datasets described in Section 5.
+
 ## 1. Scope
 
 This checkpoint covers the first half of the project: turning a single room photograph into a
-structured 2D floor plan, checking that plan against hard constraints, and scoring it. The
-optimizer is now implemented as well; the final evaluation and visualization are planned for
-the second half.
+structured 2D floor plan, checking that plan against hard constraints, scoring it, and searching
+for better furniture arrangements.
 
 Implemented at this checkpoint:
 
@@ -16,33 +18,12 @@ Implemented at this checkpoint:
 - Scoring: 5 cm occupancy grid, hard constraints, soft terms, and a weighted score.
 - Optimization: random feasible search, greedy sequential placement, and simulated annealing
   with restarts and top-K layouts.
-- Evaluation tooling: unified-class detector mAP, geometry accuracy, and E1/E2 experiment
+- Evaluation tooling: unified-class detector mAP, geometry accuracy, and E1/E2/E3 experiment
   harnesses.
 
 ## 2. Architecture
 
-```mermaid
-flowchart LR
-    A[Room photograph] --> B[Perception]
-    B --> B1[YOLO detector]
-    B --> B2[Depth Anything V2]
-    B --> B3[SegFormer floor/wall masks]
-    B1 --> C[Geometry]
-    B2 --> C
-    B3 --> C
-    C --> C1[Floor plane + scale]
-    C --> C2[Rectangular room]
-    C --> C3[Lift furniture/openings]
-    C1 --> D[2D floor plan JSON]
-    C2 --> D
-    C3 --> D
-    D --> E[Constraint checker]
-    D --> F[Scoring terms]
-    E --> G[Weighted score + violations]
-    F --> G
-    D --> H[Optimizer]
-    H --> E
-```
+![System pipeline](assets/architecture.png)
 
 Data flow:
 
@@ -52,28 +33,104 @@ Data flow:
 3. `FloorPlan` is serialized to JSON.
 4. `LayoutScorer` rasterizes furniture, runs hard constraints, computes soft terms, and returns
    a score plus feasibility violations.
-5. The optimizer (second half) will search furniture placements using the same scorer.
+5. The optimizer perturbs furniture poses and uses the same scorer to compare candidates.
 
 ## 3. Representation and scoring
 
 - Coordinate frame: camera x right, y down, z forward; floor frame `u` right and `v` forward.
 - Units: meters after scale calibration.
 - Openings: `wall_index` 0=min_y, 1=max_x, 2=max_y, 3=min_x.
-- Grid: 5 cm cells, furniture inflated by a clearance margin.
-- Hard constraints: inside room, no furniture overlap, doors/windows unobstructed, and
-  walkable connectivity.
+- Grid: 5 cm cells. Furniture is rasterized by its footprint; clearance is handled by scoring
+  terms rather than by inflating the footprint.
+- Hard constraints: inside room, pairwise furniture overlap, door clear-zone blocking, and full
+  window blocking.
 - Soft terms: overlap, walking area, path quality, wall proximity, door/window clearance,
   utilization, clearance, and pair preferences.
-- Score: weighted sum in `[0, 1]`; feasibility is reported separately.
+- Score: weighted sum in `[0, 1]`; feasibility is reported separately. The default weights sum
+  to 1.0, with walking area (0.22), door clearance (0.18), and front clearance (0.16) dominant.
 
-## 4. Experiment design
+Walkability is a soft term, not a hard constraint. A layout can therefore be feasible while
+still receiving a low walking score.
+
+## 4. Experimental setup
+
+### 4.1 Environment
+
+| Item | Value |
+|---|---|
+| OS | Windows 11 |
+| Python | 3.12.10 |
+| PyTorch | 2.14.1+cpu (CUDA unavailable in the smoke environment) |
+| Ultralytics | 8.4.184 |
+| Transformers | 5.20.2 |
+| Shapely | 2.2.0 |
+| NumPy | 2.5.2 |
+
+Smoke runs were CPU-only. Fine-tuning is intended for a GPU; the implementation does not require
+one for inference of the small models.
+
+### 4.2 Perception
+
+- Detector: YOLOv8s, 640 px input, confidence 0.25, NMS IoU 0.7, maximum 300 detections.
+- Unified taxonomy: bed, desk, chair, couch, table, cabinet, door, window.
+- Depth: Depth Anything V2 Small for relative depth; Depth Anything V2 Metric Indoor Small for
+  the metric-depth smoke check.
+- Segmentation: SegFormer-B0 fine-tuned on ADE20K; floor label 3, wall label 0.
+
+### 4.3 Training and evaluation defaults
+
+- Split: 70% train, 15% validation, 15% test; seed 0.
+- Training: 100 epochs, batch 16, 640 px, initial learning rate 0.01, cosine schedule,
+  patience 20.
+- Detection evaluation: confidence 0.001 for AP, report confidence 0.25, IoU thresholds
+  0.50:0.05:0.95.
+
+These are configuration defaults; the full training run has not been executed because the
+processed dataset is not yet populated.
+
+### 4.4 Geometry, scoring, and optimization
+
+- Floor plane: RANSAC with 300 iterations, 0.03 inlier threshold, stride 4.
+- Scale modes: metric depth, known reference, user room dimensions, or unscaled.
+- Scoring: 5 cm grid, 0.6 m walkway width, 5 cm ideal wall gap, 0.5 m wall tolerance,
+  0.9 m door clear depth, 0.3 m window clear depth.
+- Random search: 300 feasible layouts.
+- Greedy: 120 candidate poses per item, wall-affinity and large items placed first.
+- Simulated annealing: 600 iterations, 2 restarts, temperature 0.05 to 0.001, 0.4 m translation
+  step, top-3 layouts, warm start from greedy.
+
+## 5. Dataset status
+
+The repository contains the data tooling and schemas, but not the measured evaluation data yet.
+
+| Dataset | Status |
+|---|---|
+| Detection training set (`data/processed`) | Empty; `data.sources` in `configs/detection.yaml` is not populated |
+| Own-room photographs and measurements | Not collected; only the capture protocol and GT template exist |
+| Smoke photographs | Two COCO room images (`000000000139`, `000000000632`) with cached perception outputs |
+
+The planned detection sources are COCO, Open Images, and Roboflow room datasets, merged into the
+unified taxonomy with the 70/15/15 split. The own-room protocol is documented in
+`docs/own_room_dataset.md`; ground-truth JSON uses `data/floorplans_gt/<room>/floorplan_gt.json`.
+
+Own-room capture plan: 3-5 landscape photos per room at roughly chest height, including a
+doorway view and views that show the floor-wall boundary. Hand measurements cover room width and
+depth, door/window offsets and widths, and each movable item's class, dimensions, center, and
+0/90/180/270 rotation. Photos stay local; only the measurement annotations are committed.
+
+## 6. Experiment design
 
 | ID | Question | Inputs | Metrics |
 |---|---|---|---|
 | E1 | Does fine-tuning beat zero-shot detection? | COCO/Open Images/Roboflow room images | mAP@0.5, mAP@0.5:0.95, P, R, F1 |
-| E2 | Which scale source is accurate enough? | Single photos + depth | room width/depth error, furniture position error, feasibility |
+| E2 | Which scale source is accurate enough? | Single photos + depth + measured room | room width/depth error, furniture position error, feasibility |
 | Geometry | How accurate is the lifted plan? | Own-room photos + hand measurements | room error, furniture center/dim error, footprint IoU |
-| E3 | Does optimization improve layouts? | Synthetic + real floor plans | score delta, feasibility rate, runtime (second half) |
+| E3 | Does optimization improve layouts? | Detected and synthetic floor plans | score delta, feasibility rate, evaluations, runtime |
+
+Detector metrics remap both zero-shot and fine-tuned predictions to the unified taxonomy before
+matching. Geometry evaluation matches furniture by class and footprint overlap, then reports
+room errors, center/dimension errors, and footprint IoU. E2 adds hand-measured room and furniture
+errors; without those measurements the error columns are intentionally `n/a`.
 
 Scale modes in E2:
 
@@ -81,23 +138,20 @@ Scale modes in E2:
 - `reference`: known-size object or opening; no user dimensions.
 - `user`: user supplies room width/depth.
 
-## 5. Status
+## 7. Results status
 
-| Component | Status |
-|---|---|
-| Perception pipeline | Implemented, smoke-tested |
-| Geometry/floor plan | Implemented, smoke-tested |
-| Constraint/scoring module | Implemented, unit-tested |
-| Geometry accuracy tooling | Implemented; needs measured room data |
-| E1 comparison harness | Implemented; needs full dataset and training run |
-| E2 scale harness | Implemented; smoke-tested with relative and metric depth |
-| Own-room dataset | Protocol/template ready; photos and measurements pending |
-| Optimizer | Random/greedy/SA implemented; GA pending |
-| E3 comparison harness | Implemented; smoke-tested on 2 rooms |
+### 7.1 Reportable results
 
-## 6. Smoke checks
+| Experiment | Status | Blocker |
+|---|---|---|
+| E1 detector comparison | Pending | Full processed dataset and training run |
+| E2 scale comparison | Smoke only | Measured room/furniture ground truth; working reference mode |
+| Geometry accuracy | Pending | Own-room photos and hand measurements |
+| E3 optimization comparison | Smoke only | Larger set of detected and synthetic floor plans |
 
-These are pipeline checks, not reportable benchmark results.
+The numbers in Section 7.2 are pipeline checks, not benchmark results.
+
+### 7.2 Smoke checks
 
 Relative-depth perception on `000000000632` (bed + chair):
 
@@ -127,32 +181,101 @@ Optimizer smoke check on the `000000000632` plan:
 | greedy | 0.9085 | 0.9129 | +0.0044 | yes |
 | simulated annealing | 0.9085 | 0.9144 | +0.0059 | yes |
 
-## 7. Failure cases
+E3 aggregate over the two smoke floor plans:
+
+| Algorithm | Mean initial | Mean best | Mean delta | Improved | Feasible init -> best | Mean runtime (s) |
+|---|---:|---:|---:|---:|---|---:|
+| random | 0.8985 | 0.9114 | +0.0129 | 2/2 | 0 -> 2 | 1.46 |
+| greedy | 0.8985 | 0.9197 | +0.0212 | 2/2 | 0 -> 2 | 1.31 |
+| simulated annealing | 0.8985 | 0.9204 | +0.0219 | 2/2 | 0 -> 2 | 9.09 |
+
+![Detected furniture](assets/perception_632_detections.jpg)
+
+*Perception smoke check: bed and chair detected in `000000000632`.*
+
+![Relative depth](assets/depth_632.png)
+
+*Relative-depth output. Larger values are closer; geometry calibrates the inverse depth against
+the floor plane.*
+
+![Floor/wall structure](assets/structures_632.jpg)
+
+*SegFormer floor/wall overlay used by the geometry stage.*
+
+![Detected floor plan](assets/geometry_632.png)
+
+*Detected floor plan. The bed lies partly outside the estimated room, which is why the initial
+layout is infeasible.*
+
+![Before and after optimization](assets/optimizer_before_after.png)
+
+*Optimizer smoke check: the detected layout is moved inside the room and becomes feasible. The
+score gain is small because the initial furniture arrangement was already reasonable.*
+
+![Failure case](assets/geometry_139.png)
+
+*Failure case: the visible floor is partial, the room estimate is too small, and furniture falls
+outside it.*
+
+## 8. Failure cases
 
 - A single photo often shows only part of the floor, so the rectangular room can be too small.
   Both smoke images produced outside-room violations.
 - Relative depth is inverse depth; geometry calibrates it against the floor plane, but absolute
   scale still depends on a reference or user dimensions.
 - With no door/window detection, the `reference` mode cannot calibrate scale.
-- Sparse furniture layouts can make the walking-connectivity constraint fail even when the
-  visible area looks reasonable.
+- Sparse furniture layouts can make the walking-connectivity term fail even when the visible
+  area looks reasonable.
 - Detection class coverage and small-object recall are the main perception risks.
+- The optimizer can exploit scoring terms, for example by hugging walls or leaving large empty
+  regions, and its score gains on already-reasonable layouts are small.
+- Simulated annealing is much slower than greedy on the smoke plans (about 6-7x) for a modest
+  score improvement; the current schedule is not yet tuned.
+- There is no measured validation yet, so the smoke scores cannot support accuracy claims.
 
-## 8. Open issues
+## 9. Open issues
 
-- Full E1 dataset preparation and fine-tuning are not run yet; the comparison table is pending.
+- Full E1 dataset preparation and fine-tuning are not run; the comparison table is pending.
 - Own-room photos and hand measurements are needed for geometry accuracy.
-- Metric-depth checkpoint is validated for inference, but the room estimate still needs
-  measured ground truth.
-- GA comparison, E3, and end-to-end visualization are second-half work.
+- Metric-depth inference works, but the room estimate still needs measured ground truth.
+- Reference-scale calibration needs detected or annotated openings.
+- GA comparison, larger E3 runs, and end-to-end visualization are second-half work.
+- The report needs a final pass with measured tables, figure numbering, and submission formatting.
 
-## 9. Next steps
+## 10. Next steps
 
-1. Prepare/verify the full detection dataset and run E1 training and comparison.
+1. Populate and verify the full detection dataset; run E1 training and comparison.
 2. Capture own-room photos and measurements; run `scripts/evaluate_geometry.py`.
-3. Add the GA comparison, E3 synthetic experiments, and failure-case visualizations.
-4. Build the end-to-end image-to-optimized-plan CLI and before/after visualization.
-5. Finalize the report with measured E1/E2/geometry/optimizer tables.
+3. Measure rooms for E2 and fix reference-scale calibration.
+4. Run E3 on a larger set, including synthetic bad layouts and before/after figures.
+5. Add the GA comparison and end-to-end image-to-optimized-plan CLI.
+6. Finalize the report with measured E1/E2/geometry/E3 tables and citations.
+
+## 11. Conclusion
+
+The midterm checkpoint delivers a working 2D representation and a reproducible evaluation
+scaffold: perception, geometry lifting, constraint checking, scoring, and three optimizers all
+run end-to-end on smoke images. The main unresolved item is measured validation. The code is
+ready for the full datasets, but the current report cannot yet claim detector, geometry, or
+scale accuracy beyond the qualitative smoke checks shown above.
+
+## 12. References
+
+- Redmon, J., Divvala, S., Girshick, R., & Farhadi, A. (2016). *You Only Look Once: Unified,
+  Real-Time Object Detection.* CVPR.
+- Xie, E., Wang, W., Yu, Z., Anandkumar, A., Alvarez, J. M., & Luo, P. (2021). *SegFormer:
+  Simple and Efficient Design for Semantic Segmentation with Transformers.* NeurIPS.
+- Yang, L., Kang, B., Huang, Z., Xu, X., Feng, J., & Zhao, H. (2024). *Depth Anything V2.*
+  NeurIPS.
+- Kirkpatrick, S., Gelatt, C. D., & Vecchi, M. P. (1983). *Optimization by Simulated Annealing.*
+  Science, 220(4598), 671-680.
+- Merrell, P., Schkufza, E., & Koltun, V. (2011). *Computer-Generated Residential Building
+  Layouts.* ACM Transactions on Graphics.
+- Paschalidou, D., Kar, A., Shugrina, M., Kreis, K., & Fidler, S. (2021). *ATISS: Autoregressive
+  Transformers for Indoor Scene Synthesis.* NeurIPS.
+- Ultralytics. *YOLOv8 / YOLO11 documentation.* https://docs.ultralytics.com
+
+Citations should be rechecked against the publisher or arXiv records before final submission.
 
 ## Appendix: commands
 
@@ -175,4 +298,9 @@ python scripts/evaluate_geometry.py \
 # Optimizer comparison
 python scripts/optimize_floorplan.py \
     --floorplan results/geometry/room1/floorplan.json --algorithm all
+
+# E3
+python scripts/run_e3_optimization.py \
+    --floorplans results/geometry \
+    --algorithms random greedy annealing
 ```
