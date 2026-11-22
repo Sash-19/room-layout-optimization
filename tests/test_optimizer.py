@@ -4,7 +4,7 @@ import pytest
 from shapely.geometry import box
 
 from src.floorplan.representation import FloorPlan, Furniture, Opening, Room
-from src.optimization import greedy_search, random_search, simulated_annealing
+from src.optimization import genetic_algorithm, greedy_search, random_search, simulated_annealing
 from src.scoring.score import LayoutScorer
 
 
@@ -93,6 +93,52 @@ def test_wall_affinity_item_snaps_to_a_wall():
 
     assert couch.footprint.distance(result.best_plan.room.polygon.boundary) <= 0.11
     assert min(abs(couch.theta - angle) for angle in (0.0, math.pi / 2, math.pi, -math.pi / 2)) < 1e-6
+
+
+def test_genetic_algorithm_improves_and_returns_top_k():
+    plan = make_plan(
+        furniture=[
+            Furniture("bed", 1.6, 2.0, 0.8, 1.0, wall_affinity=True),
+            Furniture("desk", 1.2, 0.6, 4.0, 2.0),
+            Furniture("chair", 0.5, 0.5, 4.0, 2.0),
+        ]
+    )
+    scorer = LayoutScorer.from_config({"grid": {"resolution": 0.1}})
+    initial = scorer.evaluate(plan)
+    config = make_config(
+        genetic={
+            "population_size": 12,
+            "generations": 8,
+            "tournament_size": 3,
+            "elitism": 2,
+            "crossover_probability": 0.8,
+            "mutation_probability": 0.5,
+            "top_k": 3,
+        }
+    )
+
+    result = genetic_algorithm(plan, scorer, config)
+
+    assert result.algorithm == "genetic"
+    assert result.best_score.feasible
+    assert result.best_score.total >= initial.total
+    assert result.evaluations > 1
+    assert 1 <= len(result.top_plans) <= 3
+    assert all(item.feasible for item in result.top_scores)
+
+
+def test_genetic_algorithm_keeps_locked_items_fixed():
+    bed = Furniture("bed", 1.6, 2.0, 0.8, 1.0, theta=0.3, wall_affinity=True, locked=True)
+    plan = make_plan(furniture=[bed, Furniture("chair", 0.5, 0.5, 3.0, 2.0)])
+    scorer = LayoutScorer.from_config({"grid": {"resolution": 0.1}})
+    config = make_config(genetic={"population_size": 8, "generations": 4, "top_k": 2})
+
+    result = genetic_algorithm(plan, scorer, config)
+
+    locked = result.best_plan.room.furniture[0]
+    assert locked.x == pytest.approx(bed.x)
+    assert locked.y == pytest.approx(bed.y)
+    assert locked.theta == pytest.approx(bed.theta)
 
 
 def test_simulated_annealing_improves_and_returns_top_k():

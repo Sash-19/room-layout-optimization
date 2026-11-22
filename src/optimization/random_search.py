@@ -19,8 +19,13 @@ def random_search(
     rng = Random(int(settings.get("seed", 0)))
     iterations = int(settings.get("random", {}).get("iterations", 200))
     max_attempts = int(settings.get("random", {}).get("max_layout_attempts", 40))
+    max_failures = int(settings.get("random", {}).get("max_consecutive_failures", 15))
 
     initial_score = scorer.evaluate(plan)
+    oversubscribed = sum(item.area for item in plan.room.furniture) > plan.room.area
+    if oversubscribed:
+        max_attempts = min(max_attempts, 3)
+        iterations = min(iterations, 20)
     best_plan = clone_plan(plan)
     best_score = initial_score
     evaluations = 1
@@ -32,9 +37,11 @@ def random_search(
             "feasible": initial_score.feasible,
             "violations": len(initial_score.violations),
             "improved": False,
+            "oversubscribed": oversubscribed,
         }
     ]
 
+    consecutive_failures = 0
     for iteration in range(1, iterations + 1):
         candidate = None
         for _ in range(max(1, max_attempts)):
@@ -42,7 +49,21 @@ def random_search(
             if candidate is not None:
                 break
         if candidate is None:
+            consecutive_failures += 1
+            if consecutive_failures >= max(1, max_failures):
+                history.append(
+                    {
+                        "evaluation": evaluations,
+                        "score": round(best_score.total, 4),
+                        "feasible": best_score.feasible,
+                        "violations": len(best_score.violations),
+                        "improved": False,
+                        "stopped": "max_consecutive_failures",
+                    }
+                )
+                break
             continue
+        consecutive_failures = 0
 
         score = scorer.evaluate(candidate)
         evaluations += 1

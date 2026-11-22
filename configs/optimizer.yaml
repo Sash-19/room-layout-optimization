@@ -7,6 +7,7 @@ sampling:
 random:
   iterations: 300
   max_layout_attempts: 40
+  max_consecutive_failures: 15
 greedy:
   candidates_per_item: 120
 annealing:
@@ -18,3 +19,13 @@ annealing:
   move_attempts: 25
   top_k: 3
   warm_start: greedy
+genetic:
+  population_size: 32
+  generations: 40
+  tournament_size: 3
+  elitism: 2
+  crossover_probability: 0.75
+  mutation_probability: 0.35
+  mutation_step_m: 0.5
+  top_k: 3
+  min_layout_distance_m: 0.5
