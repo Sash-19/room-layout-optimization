@@ -11,7 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.floorplan.representation import FloorPlan
-from src.optimization import greedy_search, random_search, simulated_annealing
+from src.optimization import genetic_algorithm, greedy_search, random_search, simulated_annealing
 from src.optimization.reporting import E3Record, format_e3_markdown, summarize_e3
 from src.scoring.score import LayoutScorer
 from src.utils import ensure_dir, load_yaml, save_json
@@ -20,6 +20,7 @@ ALGORITHMS = {
     "random": random_search,
     "greedy": greedy_search,
     "annealing": simulated_annealing,
+    "genetic": genetic_algorithm,
 }
 
 

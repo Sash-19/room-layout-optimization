@@ -9,9 +9,13 @@ data:
   copy_mode: copy
   verify_images: false
   sources:
-    - name: openimages_rooms
+    - name: openimages_rooms_a
       type: yolo
       root: data/raw/openimages
+      names: [bed, desk, chair, couch, table, cabinet, door, window]
+    - name: openimages_rooms_b
+      type: yolo
+      root: data/raw/openimages_b
       names: [bed, desk, chair, couch, table, cabinet, door, window]
 
 model:

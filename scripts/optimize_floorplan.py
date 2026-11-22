@@ -10,7 +10,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.floorplan.representation import FloorPlan
-from src.optimization import OptimizationResult, greedy_search, random_search, simulated_annealing
+from src.optimization import (
+    OptimizationResult,
+    genetic_algorithm,
+    greedy_search,
+    random_search,
+    simulated_annealing,
+)
 from src.scoring.score import LayoutScorer
 from src.utils import ensure_dir, load_yaml, save_json
 
@@ -22,7 +28,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scoring-config", default="configs/scoring.yaml")
     parser.add_argument(
         "--algorithm",
-        choices=("random", "greedy", "annealing", "both", "all"),
+        choices=("random", "greedy", "annealing", "genetic", "both", "all"),
         default=None,
     )
     parser.add_argument("--out", default="results/optimization")
@@ -58,8 +64,8 @@ def main() -> int:
     if algorithm == "both":
         algorithms = ["random", "greedy"]
     elif algorithm == "all":
-        algorithms = ["random", "greedy", "annealing"]
-    elif algorithm in {"random", "greedy", "annealing"}:
+        algorithms = ["random", "greedy", "annealing", "genetic"]
+    elif algorithm in {"random", "greedy", "annealing", "genetic"}:
         algorithms = [algorithm]
     else:
         print(f"unknown algorithm: {algorithm}", file=sys.stderr)
@@ -73,6 +79,8 @@ def main() -> int:
             result = random_search(plan, scorer, config)
         elif name == "greedy":
             result = greedy_search(plan, scorer, config)
+        elif name == "genetic":
+            result = genetic_algorithm(plan, scorer, config)
         else:
             result = simulated_annealing(plan, scorer, config)
         results.append(result)

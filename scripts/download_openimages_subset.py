@@ -134,7 +134,7 @@ def select_images(
             selected.append(image_id)
 
     for cls in UNIFIED_CLASSES:
-        candidates = sorted(by_class.get(cls, []), key=lambda image_id: (-len(classes[image_id]), image_id))
+        candidates = list(by_class.get(cls, []))
         count = sum(1 for image_id in selected if cls in classes[image_id])
         for image_id in candidates:
             if count >= min_per_class or len(selected) >= max_images:
@@ -143,7 +143,8 @@ def select_images(
                 add(image_id)
                 count += 1
 
-    multi = sorted(classes, key=lambda image_id: (-len(classes[image_id]), image_id))
+    multi = list(classes)
+    rng.shuffle(multi)
     for image_id in multi:
         if len(selected) >= max_images:
             break

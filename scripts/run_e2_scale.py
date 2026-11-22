@@ -66,8 +66,8 @@ def format_markdown(records: list[dict]) -> str:
     lines = [
         "# E2: Scale Calibration",
         "",
-        "| Mode | Scale | Room (m) | Camera height (m) | Feasible | Score | Width err (%) | Depth err (%) | Furniture pos. err (m) |",
-        "|---|---:|---|---:|---|---:|---:|---:|---:|",
+        "| Mode | Reported mode | Scale | Room (m) | Camera height (m) | Feasible | Score | Width err (%) | Depth err (%) | Furniture pos. err (m) |",
+        "|---|---|---:|---|---:|---|---:|---:|---:|---:|",
     ]
     for record in records:
         geometry = record.get("geometry") or {}
@@ -76,9 +76,10 @@ def format_markdown(records: list[dict]) -> str:
         furniture = record.get("furniture") or {}
         position = furniture.get("position_error_m", {}).get("mean") if furniture else None
         lines.append(
-            "| {mode} | {scale:.3f} | {width:.2f} x {depth:.2f} | {camera:.2f} | {feasible} | "
+            "| {mode} | {reported} | {scale:.3f} | {width:.2f} x {depth:.2f} | {camera:.2f} | {feasible} | "
             "{score:.3f} | {width_error} | {depth_error} | {position} |".format(
                 mode=record["mode"],
+                reported=record.get("scale_mode", record["mode"]),
                 scale=record["scale"],
                 width=record["room_width_m"],
                 depth=record["room_depth_m"],
@@ -154,7 +155,8 @@ def main() -> int:
         save_floorplan(floorplan, output / f"{mode}_floorplan.png")
         save_json(score.to_dict(), output / f"{mode}_score.json")
         print(
-            f"{mode}: scale={floorplan.scale:.3f} room={floorplan.room.width:.2f}x{floorplan.room.depth:.2f} "
+            f"{mode}: reported={floorplan.scale_mode} scale={floorplan.scale:.3f} "
+            f"room={floorplan.room.width:.2f}x{floorplan.room.depth:.2f} "
             f"score={score.total:.3f} feasible={score.feasible}"
         )
 

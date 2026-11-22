@@ -1,0 +1,31 @@
+algorithm: greedy
+seed: 0
+rotation_step_deg: 90
+sampling:
+  pose_attempts: 60
+  wall_snap_probability: 0.7
+random:
+  iterations: 150
+  max_layout_attempts: 40
+  max_consecutive_failures: 15
+greedy:
+  candidates_per_item: 80
+annealing:
+  iterations: 250
+  restarts: 1
+  start_temp: 0.05
+  end_temp: 0.001
+  step_m: 0.4
+  move_attempts: 20
+  top_k: 3
+  warm_start: greedy
+genetic:
+  population_size: 20
+  generations: 15
+  tournament_size: 3
+  elitism: 2
+  crossover_probability: 0.75
+  mutation_probability: 0.35
+  mutation_step_m: 0.5
+  top_k: 3
+  min_layout_distance_m: 0.5
