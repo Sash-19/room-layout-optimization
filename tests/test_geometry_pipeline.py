@@ -55,6 +55,8 @@ def test_geometry_pipeline_metric():
     assert len(plan.room.openings) == 1
     assert plan.room.openings[0].kind == "door"
     assert not plan.metadata["warnings"]
+    assert plan.metadata["geometry_reliable"] is True
+    assert plan.metadata["reliability_reasons"] == []
     json.dumps(plan.to_dict())
 
 
@@ -76,6 +78,8 @@ def test_geometry_pipeline_unscaled_relative_depth():
     assert plan.scale_mode == "unscaled"
     assert plan.scale == pytest.approx(1.0)
     assert any("relative" in warning for warning in plan.metadata["warnings"])
+    assert plan.metadata["geometry_reliable"] is False
+    assert "floor plan is not metric" in plan.metadata["reliability_reasons"]
 
 
 def test_geometry_pipeline_inverts_inverse_relative_depth():

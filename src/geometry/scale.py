@@ -112,7 +112,11 @@ def estimate_scale(
 
     if mode == "metric":
         if not depth_metric:
-            warnings.append("metric scale requested but the depth map is relative")
+            warnings.append(
+                "metric scale requested but the depth map is relative; "
+                "reporting the floor plan as unscaled"
+            )
+            return ScaleEstimate(1.0, "unscaled", {"requested_mode": requested}, warnings)
         return ScaleEstimate(1.0, "metric", {"requested_mode": requested}, warnings)
 
     if mode == "reference":

@@ -13,7 +13,7 @@ from ..utils import load_image
 from .camera import CameraIntrinsics
 from .floor_plane import calibrate_inverse_depth, floor_points_from_mask, fit_floor_plane
 from .lift import lift_detections, lift_openings
-from .room_boundary import FloorFrame, estimate_room_boundary
+from .room_boundary import FloorFrame, estimate_room_boundary, expand_room_to_contain
 from .scale import estimate_scale
 
 
@@ -166,6 +166,16 @@ class GeometryPipeline:
         scaled_frame = FloorFrame.from_plane(scaled_plane)
         scaled_points = floor_points * scale.scale
 
+        camera_height = float(scaled_plane.camera_height)
+        height_range = scale_config.get("camera_height_range_m", [0.8, 2.5])
+        height_range = [float(height_range[0]), float(height_range[1])]
+        camera_height_plausible = height_range[0] <= camera_height <= height_range[1]
+        if not camera_height_plausible:
+            warnings.append(
+                f"camera height {camera_height:.2f} is outside the plausible range "
+                f"{height_range[0]:.2f}-{height_range[1]:.2f}; the scale reference is unreliable"
+            )
+
         start = time.perf_counter()
         room_estimate = estimate_room_boundary(
             scaled_points,
@@ -180,19 +190,46 @@ class GeometryPipeline:
 
         start = time.perf_counter()
         furniture = lift_detections(perception.detections, camera, scaled_plane, scaled_frame, lift_config)
+        if scale.mode != "user" and bool(room_config.get("ensure_contains_furniture", True)):
+            room_estimate, expansion_warnings = expand_room_to_contain(
+                room_estimate,
+                [item.footprint for item in furniture],
+                margin_m=float(room_config.get("containment_margin_m", 0.05)),
+                max_ratio=float(room_config.get("containment_max_ratio", 1.75)),
+                max_size_m=float(room_config.get("max_size_m", 30.0)),
+            )
+            warnings.extend(expansion_warnings)
         openings = lift_openings(perception.detections, camera, scaled_plane, scaled_frame, room_estimate)
         room = Room(polygon=room_estimate.polygon, openings=openings, furniture=furniture)
-        outside = [item for item in furniture if not item.footprint.intersects(room_estimate.polygon)]
+        outside = [item for item in furniture if not room_estimate.polygon.buffer(1e-6).covers(item.footprint)]
         if outside:
             warnings.append(
                 f"{len(outside)} furniture footprint(s) fall outside the estimated room; "
                 "a single photo may not show the whole room, so verify the room dimensions/scale"
             )
+        furniture_area = sum(item.area for item in furniture)
+        outside_area = sum(float(item.footprint.difference(room_estimate.polygon).area) for item in furniture)
+        room_fit = {
+            "contains_furniture": not outside,
+            "furniture_area_m2": round(furniture_area, 4),
+            "room_area_m2": round(float(room_estimate.polygon.area), 4),
+            "outside_furniture_area_m2": round(outside_area, 4),
+            "oversubscribed": furniture_area > float(room_estimate.polygon.area),
+        }
         timings["lift_s"] = time.perf_counter() - start
 
         movable = sum(1 for item in perception.detections if item.cls_name in {"bed", "desk", "chair", "couch", "table", "cabinet"})
         if movable > len(furniture):
             warnings.append(f"{movable - len(furniture)} movable detections could not be lifted onto the floor")
+
+        reliability_reasons: list[str] = []
+        if not camera_height_plausible:
+            reliability_reasons.append("implausible camera height")
+        if outside:
+            reliability_reasons.append("furniture outside the estimated room")
+        if scale.mode == "unscaled":
+            reliability_reasons.append("floor plan is not metric")
+        geometry_reliable = not reliability_reasons
 
         metadata = {
             "warnings": warnings,
@@ -200,6 +237,10 @@ class GeometryPipeline:
             "plane": scaled_plane.to_dict(),
             "scale": scale.to_dict(),
             "room_estimate": room_estimate.to_dict(),
+            "room_fit": room_fit,
+            "camera_height_plausible": camera_height_plausible,
+            "geometry_reliable": geometry_reliable,
+            "reliability_reasons": reliability_reasons,
             "timings": {key: round(value, 4) for key, value in timings.items()},
         }
         if calibration is not None:

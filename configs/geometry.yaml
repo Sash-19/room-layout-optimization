@@ -23,6 +23,7 @@ scale:
   boundary_percentile: 2.0
   room_min_size_m: 1.5
   room_max_size_m: 30.0
+  camera_height_range_m: [0.8, 2.5]
 
 lift:
   snap_orientation: true
@@ -32,3 +33,6 @@ room:
   boundary_percentile: 2.0
   min_size_m: 1.5
   max_size_m: 30.0
+  ensure_contains_furniture: true
+  containment_margin_m: 0.05
+  containment_max_ratio: 1.75

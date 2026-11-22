@@ -128,3 +128,74 @@ def estimate_room_boundary(
         bounds=(float(min_x), float(min_y), float(max_x), float(max_y)),
         num_points=len(points),
     )
+
+
+def expand_room_to_contain(
+    estimate: RoomEstimate,
+    footprints,
+    margin_m: float = 0.05,
+    max_ratio: float = 1.75,
+    max_size_m: float = 30.0,
+) -> tuple[RoomEstimate, list[str]]:
+    """Grow an axis-aligned room rectangle so it contains lifted furniture.
+
+    A single photo often hides part of the floor, so the percentile rectangle can be
+    too small to hold the furniture that was actually detected. Expanding to the
+    footprint extent is a conservative repair; the expansion is refused when it
+    would distort the room beyond ``max_ratio`` or ``max_size_m`` so that a single
+    badly lifted item cannot inflate the plan.
+    """
+    warnings: list[str] = []
+    frames = [footprint for footprint in footprints if not footprint.is_empty]
+    if not frames:
+        return estimate, warnings
+
+    covered = estimate.polygon.buffer(1e-6)
+    outside = [footprint for footprint in frames if not covered.covers(footprint)]
+    if not outside:
+        return estimate, warnings
+
+    min_x, min_y, max_x, max_y = estimate.bounds
+    target_min_x = min([min_x, *(footprint.bounds[0] for footprint in outside)])
+    target_min_y = min([min_y, *(footprint.bounds[1] for footprint in outside)])
+    target_max_x = max([max_x, *(footprint.bounds[2] for footprint in outside)])
+    target_max_y = max([max_y, *(footprint.bounds[3] for footprint in outside)])
+    margin = max(0.0, float(margin_m))
+    target_min_x -= margin
+    target_min_y -= margin
+    target_max_x += margin
+    target_max_y += margin
+
+    new_width = target_max_x - target_min_x
+    new_depth = target_max_y - target_min_y
+    if new_width <= estimate.width + 1e-9 and new_depth <= estimate.depth + 1e-9:
+        return estimate, warnings
+
+    ratio = max(new_width / max(estimate.width, 1e-9), new_depth / max(estimate.depth, 1e-9))
+    if ratio > float(max_ratio):
+        warnings.append(
+            f"room boundary would have to grow {ratio:.2f}x to contain the lifted furniture; "
+            "keeping the image-derived rectangle (verify room dimensions)"
+        )
+        return estimate, warnings
+
+    if new_width > max_size_m or new_depth > max_size_m:
+        warnings.append(
+            "room boundary expansion exceeded the maximum room size; keeping the image-derived rectangle"
+        )
+        return estimate, warnings
+
+    polygon = box(target_min_x, target_min_y, target_max_x, target_max_y)
+    expanded = RoomEstimate(
+        polygon=polygon,
+        frame=estimate.frame,
+        width=float(new_width),
+        depth=float(new_depth),
+        bounds=(float(target_min_x), float(target_min_y), float(target_max_x), float(target_max_y)),
+        num_points=estimate.num_points,
+    )
+    warnings.append(
+        "room boundary expanded to contain the lifted furniture "
+        f"({estimate.width:.2f}x{estimate.depth:.2f} -> {new_width:.2f}x{new_depth:.2f})"
+    )
+    return expanded, warnings
