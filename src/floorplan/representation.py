@@ -170,14 +170,6 @@ class Room:
             furniture=[Furniture.from_dict(item) for item in payload.get("furniture", [])],
         )
 
-    @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> Room:
-        return cls(
-            polygon=Polygon(payload["polygon"]),
-            openings=[Opening.from_dict(item) for item in payload.get("openings", [])],
-            furniture=[Furniture.from_dict(item) for item in payload.get("furniture", [])],
-        )
-
 
 @dataclass(slots=True)
 class FloorPlan:
