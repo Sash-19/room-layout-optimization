@@ -69,6 +69,13 @@ class LayoutScorer:
 
         total = float(sum(self.weights[name] * terms[name] for name in terms))
         overlap_details = details.get("overlap", {})
+        footprints = [item.footprint for item in room.furniture]
+        furniture_area = sum(float(footprint.area) for footprint in footprints)
+        furniture_inside_area = sum(
+            float(footprint.intersection(room.polygon).area) for footprint in footprints
+        )
+        outside_furniture_area = max(0.0, furniture_area - furniture_inside_area)
+        violation_area = sum(float(item.area) for item in violations)
         metrics = {
             "room_area_m2": round(room.area, 4),
             "free_area_m2": round(grid.free_area, 4),
@@ -78,6 +85,11 @@ class LayoutScorer:
             "overlap_pairs": len(overlap_details.get("pairs", [])),
             "largest_free_component_fraction": round(float(terms.get("util", 0.0)), 4),
             "door_clearance": round(float(terms.get("door", 1.0)), 4),
+            "furniture_area_m2": round(furniture_area, 4),
+            "furniture_area_inside_m2": round(furniture_inside_area, 4),
+            "outside_furniture_area_m2": round(outside_furniture_area, 4),
+            "furniture_coverage_fraction": round(furniture_inside_area / room.area, 4) if room.area > 0 else 0.0,
+            "violation_area_m2": round(violation_area, 4),
             "grid": grid.to_dict(),
         }
         return ScoreResult(

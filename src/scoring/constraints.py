@@ -34,34 +34,42 @@ def check_constraints(room: Room, config: dict[str, Any] | None = None) -> list[
     door_margin = float(settings.get("door_clear_margin_m", 0.1))
     window_depth = float(settings.get("window_clear_depth_m", 0.3))
     tall_height = float(settings.get("tall_item_height_m", 1.0))
+    allow_outside = bool(settings.get("allow_outside_room", False))
+    allow_overlap = bool(settings.get("allow_overlap", False))
+    allow_door_blocked = bool(settings.get("allow_door_blocked", False))
+    allow_window_blocked = bool(settings.get("allow_window_blocked", False))
 
     violations: list[ConstraintViolation] = []
     allowed = room.polygon.buffer(inside_tolerance)
-    for index, item in enumerate(room.furniture):
-        if not allowed.covers(item.footprint):
-            violations.append(
-                ConstraintViolation(
-                    "outside_room",
-                    f"{item.cls} {index} is not fully inside the room",
-                    (index,),
-                    float(item.footprint.difference(room.polygon).area),
-                )
-            )
-
-    for first in range(len(room.furniture)):
-        for second in range(first + 1, len(room.furniture)):
-            area = float(room.furniture[first].footprint.intersection(room.furniture[second].footprint).area)
-            if area > overlap_tolerance:
+    if not allow_outside:
+        for index, item in enumerate(room.furniture):
+            if not allowed.covers(item.footprint):
                 violations.append(
                     ConstraintViolation(
-                        "overlap",
-                        f"{room.furniture[first].cls} {first} overlaps {room.furniture[second].cls} {second}",
-                        (first, second),
-                        area,
+                        "outside_room",
+                        f"{item.cls} {index} is not fully inside the room",
+                        (index,),
+                        float(item.footprint.difference(room.polygon).area),
                     )
                 )
 
+    if not allow_overlap:
+        for first in range(len(room.furniture)):
+            for second in range(first + 1, len(room.furniture)):
+                area = float(room.furniture[first].footprint.intersection(room.furniture[second].footprint).area)
+                if area > overlap_tolerance:
+                    violations.append(
+                        ConstraintViolation(
+                            "overlap",
+                            f"{room.furniture[first].cls} {first} overlaps {room.furniture[second].cls} {second}",
+                            (first, second),
+                            area,
+                        )
+                    )
+
     for door in (opening for opening in room.openings if opening.kind == "door"):
+        if allow_door_blocked:
+            continue
         zone = opening_zone(room, door, max(door_depth, door.swing_radius), door_margin)
         if zone is None:
             continue
@@ -77,6 +85,9 @@ def check_constraints(room: Room, config: dict[str, Any] | None = None) -> list[
                         {"wall_index": door.wall_index, "offset": round(door.offset, 4)},
                     )
                 )
+
+    if allow_window_blocked:
+        return violations
 
     for window in (opening for opening in room.openings if opening.kind == "window"):
         zone = opening_zone(room, window, window_depth)

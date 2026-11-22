@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import time
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from PIL import Image
 
 from ..schemas import DepthMap, Detection, StructureMasks
@@ -36,6 +38,50 @@ class PerceptionResult:
             "structures": self.structures.to_dict() if self.structures is not None else None,
             "timings": {key: round(value, 4) for key, value in self.timings.items()},
         }
+
+    @classmethod
+    def from_cache(cls, directory: str | Path) -> PerceptionResult:
+        """Load a perception result previously written by ``results/<run>/perception/<stem>``."""
+        directory = Path(directory)
+        payload_path = directory / "result.json"
+        if not payload_path.is_file():
+            raise FileNotFoundError(f"missing cached perception result: {payload_path}")
+        payload = json.loads(payload_path.read_text(encoding="utf-8"))
+        detections = [Detection.from_dict(item) for item in payload.get("detections", [])]
+        size = payload.get("image_size", {})
+        image_size = (int(size.get("width", 0)), int(size.get("height", 0)))
+
+        depth = None
+        depth_payload = payload.get("depth") or {}
+        depth_path = directory / "depth.npy"
+        if depth_payload and depth_path.is_file():
+            depth = DepthMap(
+                np.load(depth_path),
+                metric=bool(depth_payload.get("metric", False)),
+                source=str(depth_payload.get("source", "")),
+            )
+
+        structures = None
+        floor_path = directory / "floor_mask.png"
+        wall_path = directory / "wall_mask.png"
+        if floor_path.is_file() and wall_path.is_file():
+            with Image.open(floor_path) as floor_image:
+                floor = np.asarray(floor_image.convert("L")) > 127
+            with Image.open(wall_path) as wall_image:
+                wall = np.asarray(wall_image.convert("L")) > 127
+            structures = StructureMasks(
+                floor,
+                wall,
+                source=str((payload.get("structures") or {}).get("source", "")),
+            )
+
+        return cls(
+            detections=detections,
+            image_size=image_size,
+            depth=depth,
+            structures=structures,
+            timings={key: float(value) for key, value in (payload.get("timings") or {}).items()},
+        )
 
 
 class PerceptionPipeline:
